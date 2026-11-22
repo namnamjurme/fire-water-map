@@ -106,6 +106,21 @@ main{flex:1 1 auto;min-height:0;position:relative}
 .sim .kv span{font-size:15px}
 .firebar{position:absolute;left:12px;right:12px;top:48px;z-index:2;display:none;background:var(--accent);color:var(--accent-ink);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:500;align-items:center;gap:8px}
 .firebar.on{display:flex}
+.firebar.alert{cursor:pointer;animation:pulse 1.6s ease-in-out infinite}
+.firebar.alert u{text-decoration:none;margin-left:6px;font-weight:700;white-space:nowrap}
+@keyframes pulse{50%{box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 35%,transparent)}}
+@media (prefers-reduced-motion:reduce){.firebar.alert{animation:none}}
+.kv.ops span{font-size:14px}
+.kv.ops small{font-size:11px;color:var(--ink2);font-weight:400}
+table.rt{width:100%;border-collapse:collapse;font-size:12.5px}
+table.rt th{font-size:11px;color:var(--ink2);font-weight:700;text-align:left;padding:4px 4px;border-bottom:1px solid var(--line)}
+table.rt td{padding:6px 4px;border-bottom:1px solid var(--line)}
+.order ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:10px}
+.order ul{margin:6px 0 0;padding-left:4px;list-style:none;display:flex;flex-direction:column;gap:6px}
+.order ul li{background:var(--surface2);border-radius:8px;padding:6px 9px}
+.order small{color:var(--ink2)}
+.dirrow{display:flex;align-items:center;gap:8px}.dirrow input{flex:1;accent-color:#6d28d9}
+details.algo summary{cursor:pointer}details.algo ol{padding-left:20px;margin:8px 0 0;font-size:12.5px;display:flex;flex-direction:column;gap:4px}
 .firebar button{margin-left:auto;background:transparent;border:1px solid currentColor;border-radius:6px;padding:3px 9px;color:inherit;font-size:12px}
 .sheet{position:absolute;left:0;right:0;bottom:0;z-index:5;background:var(--surface);border-top-left-radius:16px;border-top-right-radius:16px;box-shadow:var(--shadow);max-height:56%;display:flex;flex-direction:column;border-top:1px solid var(--line)}
 .sheet[hidden]{display:none}
@@ -399,13 +414,14 @@ function drawNow(){
   if(fire){
     const [fx,fy]=ll2s(fire.lat,fire.lon), rr=RADIUS/mpp(fire.lat);
     o+=`<circle cx="${fx}" cy="${fy}" r="${rr}" fill="color-mix(in srgb,var(--accent) 14%,transparent)" stroke="var(--accent)" stroke-width="2.5" stroke-dasharray="7 5"/>`;
-    o+=fireSVG();
+    o+=fireSVG(); o+=opsSVG();
     if(sim.t<=0&&wx&&wx.ws>=0.5){const b=(wx.wd+180)*Math.PI/180,R2=rr*1.6,a1=b-Math.PI/6,a2=b+Math.PI/6;
       const P=a=>[fx+Math.sin(a)*R2,fy-Math.cos(a)*R2];const [x1,y1]=P(a1),[x2,y2]=P(a2),[tx,ty]=[fx+Math.sin(b)*(R2+14),fy-Math.cos(b)*(R2+14)];
       o+=`<path d="M${fx} ${fy}L${x1.toFixed(1)} ${y1.toFixed(1)}A${R2.toFixed(1)} ${R2.toFixed(1)} 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)}Z" fill="rgba(230,140,0,.18)" stroke="#e08a00" stroke-width="2" stroke-dasharray="4 4"/>`;
       o+=`<text x="${tx.toFixed(1)}" y="${(ty+4).toFixed(1)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#8a4b00" stroke="#fff" stroke-width="3" paint-order="stroke" font-family="var(--font)">풍하측</text>`;}
   }
   H.filter(visible).sort((a,b)=>(a.id===selId)-(b.id===selId)).forEach(h=>{const [x,y]=ll2s(h.lat,h.lon);if(x>-30&&x<W+30&&y>-30&&y<Hh+30)o+=markerSVG(h,x,y,h.id===selId,inRange(h))});
+  if(fire)o+=opsBadges();
   if(fire){const [fx,fy]=ll2s(fire.lat,fire.lon);o+=`<g transform="translate(${fx} ${fy})"><path d="M0 0 C-14 -16 -13 -30 0 -40 C13 -30 14 -16 0 0Z" fill="var(--accent)" stroke="#fff" stroke-width="2"/><circle cy="-24" r="5" fill="#fff"/></g>`}
   if(me){const [mx,my]=ll2s(me.lat,me.lon),r=me.acc?Math.min(me.acc/mpp(me.lat),200):0;
     if(r>12)o+=`<circle cx="${mx}" cy="${my}" r="${r}" fill="rgba(30,110,230,.12)" stroke="rgba(30,110,230,.5)"/>`;
@@ -460,6 +476,8 @@ svg.addEventListener("pointerup",endPtr);svg.addEventListener("pointercancel",en
 svg.addEventListener("wheel",e=>{e.preventDefault();const r=svg.getBoundingClientRect();zoomAt(e.deltaY<0?1.25:0.8,e.clientX-r.left,e.clientY-r.top)},{passive:false});
 function tap(cx,cy){
   const r=svg.getBoundingClientRect(),px=cx-r.left,py=cy-r.top;
+  if(dirPick&&fire){const p=s2ll(px,py),e=(p.lon-fire.lon)*KLON,n=(p.lat-fire.lat)*KLAT;dirPick=false;
+    if(Math.hypot(e,n)>3){sim.dir=((Math.atan2(e,n)*180/Math.PI)+360)%360;toast(dirName(sim.dir)+"쪽으로 확산 방향을 바꿨습니다");draw();updSimUI()}updateFirebar();return}
   if(moveId){const p=s2ll(px,py),h=H.find(v=>v.id===moveId);if(h){h.lat=+p.lat.toFixed(6);h.lon=+p.lon.toFixed(6);custom=true;markCustom();saveH();toast("위치를 옮겼습니다")}const id=moveId;moveId=null;updateFirebar();select(id);return}
   if(fireMode){const p=s2ll(px,py);setFire(p.lat,p.lon);return}
   let best=null,bd=26;
@@ -490,14 +508,15 @@ const LV_MW=[1,2,3,5,8,12,18,25,35,50], SIM_TMAX=60, SIM_RATE=3;
 const PRESET=[{k:"약",lv:3},{k:"중",lv:6},{k:"강",lv:10}];
 let simCompact=true;
 const presetOf=lv=>lv<=3?"약":lv<=7?"중":"강";   /* 재생: 1초에 3분 */
-const sim={lv:Math.min(10,Math.max(1,ls.get("gc_simlv",5))),t:0,play:false};
+const sim={lv:Math.min(10,Math.max(1,ls.get("gc_simlv",5))),t:0,play:false,dir:null};
 const simQ=()=>LV_MW[sim.lv-1];
 function simGeom(t){
-  const Q=simQ(), U=wx?Math.max(0,wx.ws):0, beta=((wx&&U>=0.3?wx.wd:0)+180)*Math.PI/180;
+  const Uw=wx?Math.max(0,wx.ws):0, ov=sim.dir!=null, Q=simQ(), U=ov?Math.max(Uw,2):Uw;   /* 방향을 직접 정하면 최소 2 m/s로 기울여 표시 */
+  const beta=(ov?sim.dir:((wx&&Uw>=0.3?wx.wd:0)+180))*Math.PI/180;
   const R0=0.3+0.04*Q, Rh=R0*(1+0.5*U), Rb=R0/(1+0.25*U), LB=Math.min(4,1+0.15*U);
   const D=Math.sqrt(4*Q*1000/(Math.PI*500)), r0=D/2;
   const a=(Rh+Rb)*t/2+r0, b=Math.max(r0,a/LB), c=(Rh-Rb)*t/2;
-  return {Q,U,beta,R0,Rh,Rb,LB,D,r0,a,b,c,calm:U<0.3};
+  return {Q,U,beta,R0,Rh,Rb,LB,D,r0,a,b,c,calm:U<0.3&&!ov};
 }
 function simInfo(){
   const g=simGeom(sim.t), Qk=g.Q*1000;
@@ -529,6 +548,7 @@ function updSimUI(){
   const lv=$("#simLv"); if(!lv)return;
   const s=simInfo(),g=s.g,z=zoneOf(),burn=H.filter(inBurn).length,ok=z.total>=s.water;
   lv.textContent=`${presetOf(sim.lv)} · ${sim.lv}단계 · ${simQ()} MW`;
+  if(!fireMode&&!moveId&&!dirPick&&fire&&(updSimUI.k||"")!==sim.lv+"/"+dirDeg().toFixed(0)){updSimUI.k=sim.lv+"/"+dirDeg().toFixed(0);updateFirebar()}
   $("#simT").value=sim.t; $("#simTl").textContent=sim.t.toFixed(0)+"분";
   $("#simPlay").textContent=sim.play?"❚❚ 일시정지":sim.t>=SIM_TMAX?"↺ 다시 재생":"▶ 확산 재생";
   $("#simOut").innerHTML=`<div><b>풍하측 확산거리</b><span class="num">${Math.round(s.head)}</span> <small>m</small></div>
@@ -541,6 +561,7 @@ function updSimUI(){
 }
 function simPanel(){
   return `<div class="fsec sim"><div class="top"><b>화재 확산 시뮬레이션</b><span class="lv" id="simLv"></span><button class="tog" id="simTog" type="button"></button></div>
+   <button class="btn pri" id="simOps" type="button" style="width:100%;margin-top:8px;background:#1d4ed8;border-color:#1d4ed8">작전 명령 보기</button>
    <div class="seg" role="group" aria-label="화재 강도">${PRESET.map(p=>`<button type="button" data-lv="${p.lv}" aria-pressed="${presetOf(sim.lv)===p.k}">${p.k}<small>${LV_MW[p.lv-1]} MW</small></button>`).join("")}</div>
    <label class="note" for="simLevel">세부 단계 (1~10단계 · ${LV_MW[0]}~${LV_MW[9]} MW)</label>
    <input type="range" id="simLevel" min="1" max="10" step="1" value="${sim.lv}">
@@ -553,6 +574,7 @@ function simPanel(){
 function bindSim(){
   const setLv=v=>{sim.lv=v;ls.set("gc_simlv",v);$("#simLevel").value=v;document.querySelectorAll(".seg button").forEach(b=>b.setAttribute("aria-pressed",presetOf(v)===presetOf(+b.dataset.lv)));if(fire)fitFire();draw();updSimUI()};
   $("#simLevel").oninput=e=>setLv(+e.target.value);
+  $("#simOps").onclick=openOps;
   const sh=$("#sheet"); sh.classList.toggle("compact",simCompact);
   $("#simTog").textContent=simCompact?"자세히 ▲":"접기 ▼";
   $("#simTog").onclick=()=>{simCompact=!simCompact;sh.classList.toggle("compact",simCompact);$("#simTog").textContent=simCompact?"자세히 ▲":"접기 ▼";if(sim.play||sim.t>0)requestAnimationFrame(fitFire)};
@@ -565,13 +587,163 @@ function fitFire(){
   if(!fire)return; size();
   const pts=frontPts(SIM_TMAX,48).concat([[0,0]]), es=pts.map(p=>p[0]), ns=pts.map(p=>p[1]);
   const shEl=$("#sheet"), sh=shEl.hidden?0:shEl.getBoundingClientRect().height;
-  const top=Math.min(175,Hh*0.3), bot=Math.max(top+80,Hh-sh-14), left=14, right=W-64;
+  const top=Math.min(240,Hh*0.36), bot=Math.max(top+80,Hh-sh-14), left=14, right=W-64;
   const bw=Math.max(...es)-Math.min(...es), bh=Math.max(...ns)-Math.min(...ns);
   const mpx=Math.max(bw/(right-left),bh/(bot-top),0.25)*1.08;
   setZ(Math.min(18.5,Math.log2(40075016.686*Math.cos(fire.lat*Math.PI/180)/(256*mpx))));
   const q=en2ll((Math.max(...es)+Math.min(...es))/2,(Math.max(...ns)+Math.min(...ns))/2), [x,y]=ll2w(q.lat,q.lon), k=kk();
   view.cx=x-((left+right)/2-W/2)/k; view.cy=y-((top+bot)/2-Hh/2)/k; draw();
 }
+
+/* ───────── 작전 명령 ─────────
+   [작전 알고리즘]
+   ① 위험구역: 현재 연소영역 + 안전거리(30 m + 복사열 12.5 kW/m² 거리) 안의 소화전은 사용 불가
+   ② 요구 수준: 약 → 3등급 이상·1,000 L/min / 중 → 2등급 이상·2,000 L/min / 강 → 1등급 이상·4,000 L/min
+   ③ 1차 진압대: 사용 가능 + 요구 등급 이상 소화전을 1 km → 5 km → 10 km 순서로 찾아
+      풍상·측면 우선(풍하측은 거리 가중 1.8배), 관로가 겹치지 않게 최대 3곳, 요구 유량을 채울 때까지 배치
+   ④ 2차 대비대: 30분 뒤 예상 확산 전방(머리) 600 m 안, 그때도 위험구역 밖인 3등급 이상 소화전 2곳
+   ⑤ 요구 유량을 못 채우면 가까운 대체 수원 활용 + 급수차 지원 요청                                  */
+const REQ={약:{g:3,q:1000},중:{g:2,q:2000},강:{g:1,q:4000}};
+const meets=(p,g)=>p.g!=="X"&&+p.g<=g;
+const h2l=h=>[(h.lon-fire.lon)*KLON,(h.lat-fire.lat)*KLAT];
+function inDanger(e,n,T,m){const g=simGeom(T),sb=Math.sin(g.beta),cb=Math.cos(g.beta),x=e*sb+n*cb,y=e*cb-n*sb;return ((x-g.c)/(g.a+m))**2+(y/(g.b+m))**2<=1}
+function headAt(T){const g=simGeom(T),d=g.c+g.a;return [Math.sin(g.beta)*d,Math.cos(g.beta)*d]}
+function capSum(list){const gr={};list.forEach(r=>{(gr[r.h.pipe||"_"+r.h.id]??=[]).push(r)});let s=0;Object.values(gr).forEach(g=>{g.sort((a,b)=>b.p.q-a.p.q);g.slice(0,CAP[g[0].h.dia]||2).forEach(r=>s+=r.p.q)});return s}
+const dirDeg=()=>((simGeom(sim.t).beta*180/Math.PI)%360+360)%360;
+const fmtKm=m=>m>=1000?(m/1000).toFixed(m>=10000?0:1)+" km":Math.round(m)+" m";
+function pickUnits(cands,max,need){const out=[],pipes=new Set();let q=0;for(const r of cands){if(out.length>=max)break;const k=r.h.pipe||"_"+r.h.id;if(pipes.has(k))continue;pipes.add(k);out.push(r);q+=r.p.q;if(need&&q>=need)break}return {out,q}}
+function computeOps(){
+  const T=sim.t, g=simGeom(T), info=simInfo(), lv=presetOf(sim.lv), req=REQ[lv], margin=30+info.rad;
+  const sb=Math.sin(g.beta), cb=Math.cos(g.beta);
+  const all=H.map(h=>{const [e,n]=h2l(h),d=Math.hypot(e,n),p=perf(h),cos=d>1?(e*sb+n*cb)/d:0;return {h,p,e,n,d,cos,unusable:inDanger(e,n,T,margin)}});
+  const rings=[1000,5000,10000].map(R=>{const inR=all.filter(r=>r.d<=R),ok=inR.filter(r=>!r.unusable),good=ok.filter(r=>meets(r.p,req.g)),q=capSum(ok);return {R,n:inR.length,ok:ok.length,good:good.length,q,enough:good.length>0&&q>=req.q}});
+  let first={out:[],q:0}, searchR=10000, firstOK=false;
+  for(const R of [1000,5000,10000]){
+    const c=all.filter(r=>!r.unusable&&r.d<=R&&meets(r.p,req.g)).sort((a,b)=>a.d*(1+0.8*Math.max(0,a.cos))-b.d*(1+0.8*Math.max(0,b.cos)));
+    const s=pickUnits(c,3,req.q); if(s.out.length){first=s;searchR=R} if(s.q>=req.q){firstOK=true;break}
+  }
+  const T3=T+30, hd=headAt(T3), h15=headAt(T+15);
+  const c2=all.filter(r=>!inDanger(r.e,r.n,T3,margin)&&!first.out.includes(r)&&r.p.g!=="X"&&+r.p.g<=3)
+    .map(r=>Object.assign({},r,{dh:Math.hypot(r.e-hd[0],r.n-hd[1])})).filter(r=>r.dh<=600).sort((a,b)=>a.dh-b.dh);
+  const second=pickUnits(c2,2,0);
+  const loc=o=>{const [e,n]=[(o.pos[1]-fire.lon)*KLON,(o.pos[0]-fire.lat)*KLAT];return Object.assign({},o,{d:Math.hypot(e,n)})};
+  const station=L.stations.map(loc).sort((a,b)=>a.d-b.d)[0];
+  const alt=L.sources.map(loc).sort((a,b)=>a.d-b.d)[0];
+  const unusable=all.filter(r=>r.unusable).sort((a,b)=>a.d-b.d);
+  const nearH=all.slice().sort((a,b)=>a.d-b.d)[0];
+  return {T,g,info,lv,req,margin,rings,first,searchR,firstOK,second,hd,h15,station,alt,unusable,nearH,
+    total:all.length,usable:all.length-unusable.length};
+}
+const sideOf=r=>r.cos>0.5?"풍하측":r.cos<-0.3?"풍상측":"측면";
+const now=()=>{const d=new Date();return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")};
+function opsText(o){
+  const dir=dirName(dirDeg()), L1=[];
+  L1.push(`[작전명령] ${now()} 화재 발생 — ${o.nearH?o.nearH.h.addr.replace(/ 인근$/,"")+" 부근":"발화지점"} (${fire.lat.toFixed(5)}, ${fire.lon.toFixed(5)})`);
+  L1.push(`· 강도 ${o.lv}(${o.g.Q} MW) · ${wx?`${dirName(wx.wd)}풍 ${wx.ws.toFixed(1)} m/s`:"바람 정보 없음"} · ${dir}쪽 확산${sim.dir!=null?"(수정)":""} · 경과 ${Math.round(o.T)}분`);
+  L1.push(`· 요구: ${o.req.g}등급 이상, ${fmtQ(o.req.q)} L/min`);
+  L1.push(`1. 1차 진압 출동${o.firstOK?"":" (요구 유량 미달)"}`);
+  o.first.out.forEach((r,i)=>L1.push(`   제${i+1}진압대 → ${r.h.id} (${sideOf(r)} ${fmtKm(r.d)}, ${gname(r.p.g)} ${fmtQ(r.p.q)} L/min)`));
+  if(!o.first.out.length)L1.push("   요구 등급 소화전 없음");
+  L1.push("2. 2차 대비 (30분 뒤 확산 전방)");
+  o.second.out.forEach((r,i)=>L1.push(`   대비${i+1}대 → ${r.h.id} (예상 전방에서 ${fmtKm(r.dh)}, ${gname(r.p.g)})`));
+  if(!o.second.out.length)L1.push("   대비 가능한 소화전 없음 → 급수차 전진 배치");
+  if(o.unusable.length)L1.push(`3. 사용 불가(위험구역): ${o.unusable.slice(0,5).map(r=>r.h.id).join(", ")}${o.unusable.length>5?" 외 "+(o.unusable.length-5):""}`);
+  if(!o.firstOK)L1.push(`${o.unusable.length?4:3}. 지원 요청: 급수차 지원, 대체 수원 ${o.alt?o.alt.name+" ("+fmtKm(o.alt.d)+")":"확인 필요"}`);
+  return L1.join("\n");
+}
+/* 지도 표시: 1·5·10 km 반경, 예상 확산 경로, 출동·대비 지점 */
+let opsCache=null;
+function opsSVG(){
+  if(!fire)return "";
+  const o=opsCache=computeOps(), [fx,fy]=ll2s(fire.lat,fire.lon), m=mpp(fire.lat);
+  let s="";
+  [1000,5000,10000].forEach(R=>{const r=R/m; if(r>40000)return;
+    s+=`<circle cx="${fx}" cy="${fy}" r="${r.toFixed(1)}" fill="none" stroke="#334155" stroke-width="1.3" stroke-dasharray="${R===1000?"":"10 6"}" opacity=".7"/>`;
+    s+=`<text x="${fx}" y="${(fy-r+14).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="#334155" stroke="#fff" stroke-width="3" paint-order="stroke" font-family="var(--font)">${R/1000} km</text>`});
+  const [ax,ay]=loc2s(0,0),[bx,by]=loc2s(o.h15[0],o.h15[1]),[cx,cy]=loc2s(o.hd[0],o.hd[1]);
+  const ang=Math.atan2(cy-by,cx-bx);
+  s+=`<path d="M${ax} ${ay}L${bx.toFixed(1)} ${by.toFixed(1)}L${cx.toFixed(1)} ${cy.toFixed(1)}" fill="none" stroke="#6d28d9" stroke-width="3.5" stroke-dasharray="10 6" stroke-linecap="round"/>`;
+  s+=`<path d="M${cx} ${cy}l${(-14*Math.cos(ang-0.45)).toFixed(1)} ${(-14*Math.sin(ang-0.45)).toFixed(1)}M${cx} ${cy}l${(-14*Math.cos(ang+0.45)).toFixed(1)} ${(-14*Math.sin(ang+0.45)).toFixed(1)}" stroke="#6d28d9" stroke-width="3.5" stroke-linecap="round"/>`;
+  [[bx,by,"+15분"],[cx,cy,"+30분"]].forEach(([x,y,t])=>s+=`<circle cx="${x}" cy="${y}" r="4.5" fill="#6d28d9" stroke="#fff" stroke-width="1.5"/><text x="${x}" y="${y-9}" text-anchor="middle" font-size="11" font-weight="700" fill="#6d28d9" stroke="#fff" stroke-width="3" paint-order="stroke" font-family="var(--font)">${t}</text>`);
+  return s;
+}
+function opsBadges(){
+  const o=opsCache; if(!o)return "";
+  const tag=(r,txt,col)=>{const [x,y]=ll2s(r.h.lat,r.h.lon),w=txt.length*11+12;
+    return `<g transform="translate(${x.toFixed(1)} ${(y-30).toFixed(1)})"><rect x="${-w/2}" y="-12" width="${w}" height="20" rx="6" fill="${col}" stroke="#fff" stroke-width="1.5"/><path d="M-5 8L0 14L5 8Z" fill="${col}"/><text y="3" text-anchor="middle" font-size="11.5" font-weight="700" fill="#fff" font-family="var(--font)">${txt}</text></g>`};
+  let s="";
+  o.first.out.forEach((r,i)=>s+=tag(r,"진압"+(i+1),"#1d4ed8"));
+  o.second.out.forEach((r,i)=>s+=tag(r,"대비"+(i+1),"#6d28d9"));
+  return s;
+}
+/* 작전 창 */
+function opsBodyHTML(o){
+  const g=o.g, row=(k,v)=>`<div><b>${k}</b><span>${v}</span></div>`;
+  let s=`<div class="fsec"><h3>화재 시나리오 · ${now()} 기준 · 경과 ${Math.round(o.T)}분</h3><div class="kv ops">
+    ${row("화재 강도",`${o.lv} · ${g.Q} MW`)}
+    ${row("발화 위치",`${o.nearH?esc(o.nearH.h.addr.replace(/ 인근$/,"")):"-"}<small class="num"><br>${fire.lat.toFixed(5)}, ${fire.lon.toFixed(5)}</small>`)}
+    ${row("바람",wx?`${dirName(wx.wd)}풍 ${wx.ws.toFixed(1)} m/s <small>(${windLvl(wx.ws)})</small>`:"정보 없음")}
+    ${row("확산 방향",`${dirName(dirDeg())}쪽 <small>${sim.dir!=null?"사용자 수정":"바람 따름"}</small>`)}
+    ${row("필요 수량",`${gname(String(o.req.g))} 이상 · ${fmtQ(o.req.q)} <small>L/min</small>`)}
+    ${row("소화전 활용",`가능 ${o.usable} · <span style="color:var(--danger)">불가 ${o.unusable.length}</span> <small>개소</small>`)}
+  </div></div>`;
+  s+=`<div class="fsec"><h3>반경별 소화용수 확보</h3><table class="rt"><thead><tr><th>반경</th><th>소화전</th><th>요구등급↑</th><th>가용유량</th><th>판정</th></tr></thead><tbody>
+   ${o.rings.map(r=>`<tr><td>${r.R/1000} km</td><td class="num">${r.ok}/${r.n}</td><td class="num">${r.good}</td><td class="num">${fmtQ(r.q)}</td><td><span class="pill ${r.enough?"ok":"bad"}">${r.enough?"확보":"부족"}</span></td></tr>`).join("")}
+   </tbody></table><div class="note">소화전: 사용 가능/전체. 가용유량은 같은 관로 동시 사용 상한(150 mm 3대, 100 mm 2대)을 적용한 합계입니다.</div></div>`;
+  const u=(r,i,kind)=>`<li><b>${kind}${i+1}대</b> → <span class="mono">${esc(r.h.id)}</span> <span class="dot ${gcls(r.p.g,r.p.est)}" style="${r.p.est?"color:"+gcol(r.p.g):""};vertical-align:-3px">${r.p.g==="X"?"외":r.p.g}</span><br><small>${kind==="진압"?`${sideOf(r)} ${fmtKm(r.d)}`:`예상 전방에서 ${fmtKm(r.dh)}`} · ${fmtQ(r.p.q)} L/min${r.p.est?" (추정)":""} · ${esc(r.h.addr)}</small></li>`;
+  s+=`<div class="fsec order"><h3>작전 명령</h3><ol>
+   <li><b>1차 진압 출동</b> <span class="pill ${o.firstOK?"ok":"bad"}">${o.firstOK?`요구 유량 충족 · ${fmtKm(o.searchR)} 내`:"요구 유량 미달"}</span> <small class="num">합계 ${fmtQ(o.first.q)} L/min</small>
+     <ul>${o.first.out.map((r,i)=>u(r,i,"진압")).join("")||"<li>요구 등급 소화전 없음</li>"}</ul></li>
+   <li><b>2차 대비 (30분 뒤 확산 전방)</b>
+     <ul>${o.second.out.map((r,i)=>u(r,i,"대비")).join("")||"<li>대비 가능한 소화전 없음 → 급수차 전진 배치</li>"}</ul></li>
+   ${o.unusable.length?`<li><b>사용 불가 (위험구역)</b><ul><li><span class="mono">${o.unusable.slice(0,6).map(r=>esc(r.h.id)).join(", ")}</span>${o.unusable.length>6?` 외 ${o.unusable.length-6}개소`:""}<br><small>연소영역 + 안전거리 ${Math.round(o.margin)} m 안</small></li></ul></li>`:""}
+   ${!o.firstOK?`<li><b>지원 요청</b><ul><li>급수차 지원 · 대체 수원 ${o.alt?esc(o.alt.name)+" ("+fmtKm(o.alt.d)+")":"확인 필요"}</li></ul></li>`:""}
+   ${o.station?`<li><b>출동 기준</b><ul><li>${esc(o.station.name)} → 발화점 ${fmtKm(o.station.d)}</li></ul></li>`:""}
+  </ol></div>`;
+  return s;
+}
+function openOps(){
+  if(!fire)return;
+  const o=computeOps();
+  openModal("작전 상황",`
+   <div id="opsBody">${opsBodyHTML(o)}</div>
+   <div class="fsec"><h3>확산 방향 수정</h3>
+    <div class="dirrow"><button class="btn sm" id="dL" type="button">↺ 15°</button><input type="range" id="dirR" min="0" max="355" step="5" value="${Math.round(dirDeg()/5)*5%360}" aria-label="확산 방향"><button class="btn sm" id="dR" type="button">15° ↻</button></div>
+    <div class="note" id="dirT"></div>
+    <div class="btns" style="margin-top:8px"><button class="btn sm" id="dAuto" type="button">바람 따름(자동)</button><button class="btn sm" id="dPick" type="button">지도에서 방향 지정</button></div></div>
+   <details class="fsec algo"><summary><b>작전 알고리즘</b></summary><ol>
+    <li>연소영역 + 안전거리(30 m + 복사열 12.5 kW/m² 거리) 안의 소화전은 사용 불가로 뺍니다.</li>
+    <li>요구 수준: 약 3등급↑·1,000 L/min / 중 2등급↑·2,000 L/min / 강 1등급↑·4,000 L/min.</li>
+    <li>1차 진압대: 요구 등급 이상 소화전을 1 km → 5 km → 10 km 순으로 찾아, 풍상·측면을 우선(풍하측은 거리 1.8배로 계산)하고 관로가 겹치지 않게 최대 3곳을 요구 유량이 찰 때까지 배치합니다.</li>
+    <li>2차 대비대: 30분 뒤 예상 확산 전방 600 m 안에서, 그때도 위험구역 밖인 3등급 이상 소화전 2곳을 고릅니다.</li>
+    <li>요구 유량이 모자라면 대체 수원과 급수차 지원을 요청합니다.</li></ol></details>`,
+   `<button class="btn" id="opsMap" type="button">지도에서 보기</button><button class="btn pri" id="opsCopy" type="button">명령문 복사</button>`);
+  const dirLbl=()=>{$("#dirT").textContent=`${dirName(dirDeg())}쪽 (${Math.round(dirDeg())}°) · ${sim.dir!=null?"사용자 수정":"바람 따름"}`};
+  const refresh=()=>{draw();$("#opsBody").innerHTML=opsBodyHTML(computeOps());dirLbl();$("#dirR").value=Math.round(dirDeg()/5)*5%360;updateFirebar()};
+  const setDir=d=>{sim.dir=((d%360)+360)%360;refresh()};
+  $("#dirR").oninput=e=>setDir(+e.target.value);
+  $("#dL").onclick=()=>setDir(dirDeg()-15); $("#dR").onclick=()=>setDir(dirDeg()+15);
+  $("#dAuto").onclick=()=>{sim.dir=null;refresh()};
+  $("#dPick").onclick=()=>{closeModal();dirPick=true;updateFirebar();toast("화재가 번질 쪽을 지도에서 누르세요")};
+  $("#opsMap").onclick=()=>{closeModal();opsFit()};
+  $("#opsCopy").onclick=()=>{const txt=opsText(computeOps());
+    const fb=()=>{const ta=document.createElement("textarea");ta.value=txt;ta.style.cssText="position:fixed;left:-9999px";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");toast("명령문을 복사했습니다")}catch(e){toast("복사할 수 없습니다")}ta.remove()};
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(txt).then(()=>toast("명령문을 복사했습니다"),fb);else fb()};
+  dirLbl();
+}
+/* 출동·대비 지점이 모두 보이도록 화면 맞춤 */
+function opsFit(){
+  const o=computeOps(); size();
+  const pts=[[0,0],o.hd].concat(o.first.out.map(r=>[r.e,r.n]),o.second.out.map(r=>[r.e,r.n]));
+  const es=pts.map(p=>p[0]),ns=pts.map(p=>p[1]);
+  const shEl=$("#sheet"),sh=shEl.hidden?0:shEl.getBoundingClientRect().height;
+  const top=Math.min(240,Hh*0.36),bot=Math.max(top+80,Hh-sh-14),left=20,right=W-70;
+  const mpx=Math.max((Math.max(...es)-Math.min(...es))/(right-left),(Math.max(...ns)-Math.min(...ns))/(bot-top),0.3)*1.15;
+  setZ(Math.min(18,Math.log2(40075016.686*Math.cos(fire.lat*Math.PI/180)/(256*mpx))));
+  const q=en2ll((Math.max(...es)+Math.min(...es))/2,(Math.max(...ns)+Math.min(...ns))/2),[x,y]=ll2w(q.lat,q.lon),k=kk();
+  view.cx=x-((left+right)/2-W/2)/k; view.cy=y-((top+bot)/2-Hh/2)/k; draw();
+}
+let dirPick=false;
 
 /* ───────── 실시간 기상 (Open-Meteo, 키 불필요) ───────── */
 const DIR16=["북","북북동","북동","동북동","동","동남동","남동","남남동","남","남남서","남서","서남서","서","서북서","북서","북북서"];
@@ -807,11 +979,14 @@ function buildChips(){
   $("#chips").querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{filt[b.dataset.f]=!filt[b.dataset.f];buildChips();draw();renderList()});
 }
 function updateFirebar(){
-  $("#firebar").classList.toggle("on",fireMode||!!fire||!!moveId);
-  $("#firetxt").textContent=moveId?"새 위치를 지도에서 눌러 주세요":fireMode&&!fire?"지도를 눌러 화재 지점을 지정하세요":fireMode?"다른 곳을 누르면 지점이 바뀝니다":"화재 지점 기준 "+RADIUS+" m 조회 중";
+  const fb=$("#firebar"), alert=!!fire&&!fireMode&&!moveId&&!dirPick;
+  fb.classList.toggle("on",fireMode||!!fire||!!moveId||dirPick); fb.classList.toggle("alert",alert);
+  $("#firetxt").innerHTML=dirPick?"화재가 번질 쪽을 지도에서 누르세요":moveId?"새 위치를 지도에서 눌러 주세요":fireMode&&!fire?"지도를 눌러 화재 지점을 지정하세요":fireMode?"다른 곳을 누르면 지점이 바뀝니다":
+    `<b>화재 발생</b> ${presetOf(sim.lv)} ${simQ()} MW · ${dirName(dirDeg())}쪽 확산 <u>작전명령 보기 ›</u>`;
 }
-$("#fireoff").onclick=()=>{sim.t=0;sim.play=false;spots=[];resetFx();fire=null;fireMode=false;moveId=null;updateFirebar();buildChips();closeSheet();draw()};
-function setFire(lat,lon){fire={lat,lon};simCompact=true;resetFx();sim.t=0;updateFirebar();showFire();startSim();fetchWx(false)}
+$("#firebar").addEventListener("click",e=>{if(e.target.closest("#fireoff"))return;if(fire&&!fireMode&&!moveId&&!dirPick)openOps()});
+$("#fireoff").onclick=()=>{sim.t=0;sim.play=false;sim.dir=null;dirPick=false;spots=[];resetFx();fire=null;fireMode=false;moveId=null;updateFirebar();buildChips();closeSheet();draw()};
+function setFire(lat,lon){fire={lat,lon};fireMode=false;sim.dir=null;buildChips();simCompact=true;resetFx();sim.t=0;updateFirebar();showFire();startSim();fetchWx(false)}
 function startSim(){sim.t=0;spots=[];resetFx();sim.play=true;fitFire()}
 
 /* ───────── 시트 ───────── */
