@@ -60,7 +60,7 @@ main{flex:1 1 auto;min-height:0;position:relative}
 #mapwrap{position:absolute;inset:0;background:var(--land);touch-action:none;overflow:hidden}
 #tiles{position:absolute;inset:0;overflow:hidden;pointer-events:none}
 #tiles img{position:absolute;left:0;top:0;max-width:none;transform-origin:0 0;user-select:none;-webkit-user-drag:none}
-#windfx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}
+#windfx,#firefx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}
 #map{z-index:1;position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;user-select:none;-webkit-user-select:none}
 .chips{position:absolute;left:0;right:0;top:8px;display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;z-index:2}
 .chips::-webkit-scrollbar{display:none}
@@ -89,6 +89,15 @@ main{flex:1 1 auto;min-height:0;position:relative}
 .sim .top b{font-size:14px}
 .sim .lv{font-size:13px;font-weight:700;color:#c2410c;font-variant-numeric:tabular-nums}
 .sim input[type=range]{width:100%;accent-color:#e0431a;margin:6px 0 0}
+.sheet.compact .sbody>*:not(.sim){display:none}
+.sheet.compact .sim label,.sheet.compact #simLevel,.sheet.compact .sim .ticks,.sheet.compact .sim .note,.sheet.compact .sim .kv>div:nth-child(n+3){display:none}
+.sheet.compact .sim{margin-bottom:0}
+.sim .top .tog{margin-left:auto;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:3px 10px;font-size:12px;font-weight:700}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0 4px}
+.seg button{border:1.5px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 4px;font-weight:700;font-size:14px;line-height:1.2}
+.seg button small{display:block;font-size:11px;font-weight:500;color:var(--ink2)}
+.seg button[aria-pressed="true"]{border-color:#e0431a;background:#e0431a;color:#fff}
+.seg button[aria-pressed="true"] small{color:#ffe3d6}
 .sim .ticks{display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink2);font-variant-numeric:tabular-nums;padding:0 2px}
 .sim .play{display:flex;align-items:center;gap:10px;margin-top:10px}
 .sim .play input{flex:1}
@@ -188,6 +197,7 @@ nav.tabs svg{width:22px;height:22px}
       <div id="mapwrap">
         <div id="tiles"></div>
         <canvas id="windfx" aria-hidden="true"></canvas>
+        <canvas id="firefx" aria-hidden="true"></canvas>
         <svg id="map" role="img" aria-label="소방용수시설 지도"></svg>
         <div class="chips gut" id="chips"></div>
         <div class="firebar gut" id="firebar"><span id="firetxt"></span><button id="fireoff">해제</button></div>
@@ -476,7 +486,10 @@ new ResizeObserver(()=>{const a=W,b=Hh;size();if(Math.abs(a-W)>2||Math.abs(b-Hh)
    화원 직경 D: HRRPUA 500 kW/m² 가정, 화염높이 L = 0.235Q^0.4 − 1.02D (Heskestad, Q[kW])
    복사열 12.5 kW/m² 거리 = √(χr·Q/(4π·12.5)), χr=0.3 (점열원)
    냉각 필요수량 = Q/(2.6 MJ/kg × η), η=0.5 (물 기화열 이용효율 가정)                       */
-const LV_MW=[1,2,3,5,8,12,18,25,35,50], SIM_TMAX=60, SIM_RATE=3;   /* 재생: 1초에 3분 */
+const LV_MW=[1,2,3,5,8,12,18,25,35,50], SIM_TMAX=60, SIM_RATE=3;
+const PRESET=[{k:"약",lv:3},{k:"중",lv:6},{k:"강",lv:10}];
+let simCompact=true;
+const presetOf=lv=>lv<=3?"약":lv<=7?"중":"강";   /* 재생: 1초에 3분 */
 const sim={lv:Math.min(10,Math.max(1,ls.get("gc_simlv",5))),t:0,play:false};
 const simQ=()=>LV_MW[sim.lv-1];
 function simGeom(t){
@@ -505,22 +518,17 @@ function inBurn(h){
   const x=e*sb+n*cb, y=e*cb-n*sb; return ((x-g.c)/g.a)**2+(y/g.b)**2<=1;
 }
 function fireSVG(){
-  const [fx,fy]=ll2s(fire.lat,fire.lon), m=mpp(fire.lat);
-  const path=t=>ellPts(t,72).map((p,i)=>{const q=en2ll(p[0],p[1]),[x,y]=ll2s(q.lat,q.lon);return (i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)}).join("")+"Z";
-  let o=`<defs><radialGradient id="fg" cx="${fx}" cy="${fy}" r="${Math.max(20,(simGeom(sim.t).a+simGeom(sim.t).c)/m)}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7a1000" stop-opacity=".55"/><stop offset=".55" stop-color="#e0431a" stop-opacity=".42"/><stop offset="1" stop-color="#ff9a1f" stop-opacity=".30"/></radialGradient></defs>`;
-  if(sim.t>0){
-    o+=`<path d="${path(sim.t)}" fill="url(#fg)" stroke="#e0431a" stroke-width="2.5"/>`;
-    for(let k=10;k<sim.t;k+=10){const q=ellPts(k,72),top=q.reduce((a,p)=>{const s=ll2s(en2ll(p[0],p[1]).lat,en2ll(p[0],p[1]).lon);return s[1]<a[1]?s:a},[0,1e9]);
-      o+=`<path d="${path(k)}" fill="none" stroke="#7a1000" stroke-width="1.2" stroke-dasharray="4 4" opacity=".8"/><text x="${top[0].toFixed(1)}" y="${(top[1]-3).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#7a1000" stroke="#fff" stroke-width="3" paint-order="stroke" font-family="var(--font)">${k}분</text>`}
-  }
-  const r0=Math.max(5,simGeom(0).r0/m);
-  o+=`<circle cx="${fx}" cy="${fy}" r="${r0.toFixed(1)}" fill="#ff6a00" stroke="#7a1000" stroke-width="1.5"/>`;
+  let o="";
+  if(sim.t>0) for(let k=10;k<sim.t;k+=10){
+    let top,d="";
+    frontPts(k,72).forEach((p,i)=>{const [x,y]=loc2s(p[0],p[1]);if(i===0)top=[x,y+4];d+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)});
+    o+=`<path d="${d}Z" fill="none" stroke="#5a1200" stroke-width="1.2" stroke-dasharray="4 4" opacity=".75"/><text x="${top[0].toFixed(1)}" y="${(top[1]-4).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#5a1200" stroke="#fff" stroke-width="3" paint-order="stroke" font-family="var(--font)">${k}분</text>`}
   return o;
 }
 function updSimUI(){
   const lv=$("#simLv"); if(!lv)return;
   const s=simInfo(),g=s.g,z=zoneOf(),burn=H.filter(inBurn).length,ok=z.total>=s.water;
-  lv.textContent=`${sim.lv}단계 · ${simQ()} MW`;
+  lv.textContent=`${presetOf(sim.lv)} · ${sim.lv}단계 · ${simQ()} MW`;
   $("#simT").value=sim.t; $("#simTl").textContent=sim.t.toFixed(0)+"분";
   $("#simPlay").textContent=sim.play?"❚❚ 일시정지":sim.t>=SIM_TMAX?"↺ 다시 재생":"▶ 확산 재생";
   $("#simOut").innerHTML=`<div><b>풍하측 확산거리</b><span class="num">${Math.round(s.head)}</span> <small>m</small></div>
@@ -532,8 +540,9 @@ function updSimUI(){
   $("#simNote").textContent=g.calm?"바람 정보가 없거나 무풍이라 원형으로 확산합니다.":`풍속 ${g.U.toFixed(1)} m/s 기준 · 전방 ${g.Rh.toFixed(1)} / 후방 ${g.Rb.toFixed(1)} m/min · 장단축비 ${g.LB.toFixed(1)}`;
 }
 function simPanel(){
-  return `<div class="fsec sim"><div class="top"><b>화재 확산 시뮬레이션</b><span class="lv" id="simLv"></span></div>
-   <label class="note" for="simLevel">화재 강도 (1~10단계 · ${LV_MW[0]}~${LV_MW[9]} MW)</label>
+  return `<div class="fsec sim"><div class="top"><b>화재 확산 시뮬레이션</b><span class="lv" id="simLv"></span><button class="tog" id="simTog" type="button"></button></div>
+   <div class="seg" role="group" aria-label="화재 강도">${PRESET.map(p=>`<button type="button" data-lv="${p.lv}" aria-pressed="${presetOf(sim.lv)===p.k}">${p.k}<small>${LV_MW[p.lv-1]} MW</small></button>`).join("")}</div>
+   <label class="note" for="simLevel">세부 단계 (1~10단계 · ${LV_MW[0]}~${LV_MW[9]} MW)</label>
    <input type="range" id="simLevel" min="1" max="10" step="1" value="${sim.lv}">
    <div class="ticks">${LV_MW.map(v=>`<span>${v}</span>`).join("")}</div>
    <div class="play"><button class="btn pri sm" id="simPlay" type="button"></button><input type="range" id="simT" min="0" max="${SIM_TMAX}" step="1" value="${sim.t}" aria-label="경과 시간"><span class="tl" id="simTl"></span></div>
@@ -542,16 +551,26 @@ function simPanel(){
    <div class="note" style="margin-top:4px">풍향·풍속을 반영한 타원 확산의 가시화용 단순 모델입니다. 건물 구조·연소물·지형은 반영하지 않으므로 실제 예측값으로 쓰지 마세요.</div></div>`;
 }
 function bindSim(){
-  $("#simLevel").oninput=e=>{sim.lv=+e.target.value;ls.set("gc_simlv",sim.lv);draw();updSimUI()};
-  $("#simT").oninput=e=>{sim.t=+e.target.value;sim.play=false;draw();updSimUI()};
-  $("#simPlay").onclick=()=>{if(sim.play){sim.play=false}else{if(sim.t>=SIM_TMAX)sim.t=0;sim.play=true;fitFire()}updSimUI()};
+  const setLv=v=>{sim.lv=v;ls.set("gc_simlv",v);$("#simLevel").value=v;document.querySelectorAll(".seg button").forEach(b=>b.setAttribute("aria-pressed",presetOf(v)===presetOf(+b.dataset.lv)));if(fire)fitFire();draw();updSimUI()};
+  $("#simLevel").oninput=e=>setLv(+e.target.value);
+  const sh=$("#sheet"); sh.classList.toggle("compact",simCompact);
+  $("#simTog").textContent=simCompact?"자세히 ▲":"접기 ▼";
+  $("#simTog").onclick=()=>{simCompact=!simCompact;sh.classList.toggle("compact",simCompact);$("#simTog").textContent=simCompact?"자세히 ▲":"접기 ▼";if(sim.play||sim.t>0)requestAnimationFrame(fitFire)};
+  document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{setLv(+b.dataset.lv);if(!sim.play){if(sim.t>=SIM_TMAX){sim.t=0;spots=[]}sim.play=true;updSimUI()}});
+  $("#simT").oninput=e=>{sim.t=+e.target.value;sim.play=false;spots=spots.filter(s=>s.t0<=sim.t);draw();updSimUI()};
+  $("#simPlay").onclick=()=>{if(sim.play){sim.play=false}else{if(sim.t>=SIM_TMAX){sim.t=0;spots=[]}sim.play=true;fitFire()}updSimUI()};
   updSimUI();
 }
 function fitFire(){
-  size(); const g=simGeom(SIM_TMAX), R=g.Rh*SIM_TMAX+g.r0, room=Math.min(W*0.40,Hh*0.17);
-  const zz=Math.log2(room*40075016.686*Math.cos(fire.lat*Math.PI/180)/(256*Math.max(R,30)));
-  setZ(Math.min(18,zz)); const [x,y]=ll2w(fire.lat,fire.lon), k=kk();
-  view.cx=x; view.cy=y+(Hh*0.5-Hh*0.31)/k; draw();
+  if(!fire)return; size();
+  const pts=frontPts(SIM_TMAX,48).concat([[0,0]]), es=pts.map(p=>p[0]), ns=pts.map(p=>p[1]);
+  const shEl=$("#sheet"), sh=shEl.hidden?0:shEl.getBoundingClientRect().height;
+  const top=Math.min(175,Hh*0.3), bot=Math.max(top+80,Hh-sh-14), left=14, right=W-64;
+  const bw=Math.max(...es)-Math.min(...es), bh=Math.max(...ns)-Math.min(...ns);
+  const mpx=Math.max(bw/(right-left),bh/(bot-top),0.25)*1.08;
+  setZ(Math.min(18.5,Math.log2(40075016.686*Math.cos(fire.lat*Math.PI/180)/(256*mpx))));
+  const q=en2ll((Math.max(...es)+Math.min(...es))/2,(Math.max(...ns)+Math.min(...ns))/2), [x,y]=ll2w(q.lat,q.lon), k=kk();
+  view.cx=x-((left+right)/2-W/2)/k; view.cy=y-((top+bot)/2-Hh/2)/k; draw();
 }
 
 /* ───────── 실시간 기상 (Open-Meteo, 키 불필요) ───────── */
@@ -572,6 +591,7 @@ async function fetchWx(force){
     wxAt={lat:p.lat,lon:p.lon}; wxErr=false;
   }catch(e){wxErr=true}
   wxBusy=false; renderWx(); draw();
+  if(fire&&sim.play&&!wxErr)fitFire();
   if(fire&&!selId&&!$("#sheet").hidden){ if($("#simLv")) updSimUI(); else showFire(); }
 }
 function renderWx(){
@@ -593,58 +613,188 @@ let windOn=ls.get("gc_windfx",!(window.matchMedia&&matchMedia("(prefers-reduced-
 let parts=[], wLast=0;
 function clearFx(){wctx.clearRect(0,0,W,Hh)}
 function spawn(p){p.x=Math.random()*(W+40)-20;p.y=Math.random()*(Hh+40)-20;p.age=0;p.life=1.4+Math.random()*3.2;p.k=0.75+Math.random()*0.5}
-let embers=[];
+/* ───────── 화염 확산 가시화 (캔버스) ───────── */
+const ffx=$("#firefx"), fctx=ffx.getContext("2d");
+const FXD=Math.min(1.5,window.devicePixelRatio||1);   /* 효과 캔버스 해상도 상한(성능) */
+let spots=[], flames=[], smoke=[], sparks=[], embersIn=[], spotClock=0;
+/* 화재마다 다른 불규칙한 전선 모양 */
+let shapeH=[];
+function resetFx(){
+  flames=[];smoke=[];sparks=[];spotClock=0;
+  shapeH=[3,4,5,7,9].map(k=>({k,amp:0.025+Math.random()*0.05,ph:Math.random()*6.28}));
+  embersIn=Array.from({length:70},()=>({u:Math.random()*2-1,v:Math.random()*2-1,ph:Math.random()*6.28}));
+}
+resetFx();
+function frontAt(T,th){
+  const g=simGeom(T); let f=1;
+  const dn=(1+Math.cos(th))/2;                         /* 풍하측일수록 손가락 모양으로 더 불규칙 */
+  for(const h of shapeH) f+=h.amp*(0.6+1.4*dn*(g.calm?0:1))*Math.sin(h.k*th+h.ph+0.04*T);
+  const x=g.c+g.a*Math.cos(th)*f, y=g.b*Math.sin(th)*f, sb=Math.sin(g.beta), cb=Math.cos(g.beta);
+  return [x*sb+y*cb, x*cb-y*sb];                        /* 동, 북 (m) */
+}
+const frontPts=(T,n)=>Array.from({length:n},(_,i)=>frontAt(T,i/n*2*Math.PI));
+let FO={x:0,y:0,m:1};
+const loc2s=(e,n)=>{const q=en2ll(e,n);return ll2s(q.lat,q.lon)};
+const l2s=(e,n)=>[FO.x+e/FO.m,FO.y-n/FO.m];             /* 화원 부근 빠른 근사 */
+/* 스프라이트 */
+function mkSprite(w,h,draw){const c=document.createElement("canvas");c.width=w;c.height=h;draw(c.getContext("2d"),w,h);return c}
+const FLAME=mkSprite(64,128,(c,w,h)=>{
+  /* 부드러운 타원형 불꽃: 바깥 붉은 불꽃 + 아래쪽 밝은 심 */
+  const blob=(cx,cy,rx,ry,stops)=>{c.save();c.translate(cx,cy);c.scale(1,ry/rx);const g=c.createRadialGradient(0,0,0,0,0,rx);stops.forEach(s=>g.addColorStop(s[0],s[1]));c.fillStyle=g;c.beginPath();c.arc(0,0,rx,0,6.283);c.fill();c.restore()};
+  blob(w/2,h*0.56,w*0.48,h*0.46,[[0,"rgba(255,120,20,0.85)"],[0.55,"rgba(235,60,5,0.55)"],[1,"rgba(200,30,0,0)"]]);
+  blob(w/2,h*0.68,w*0.32,h*0.30,[[0,"rgba(255,235,150,0.95)"],[0.5,"rgba(255,170,40,0.7)"],[1,"rgba(255,120,20,0)"]]);
+  blob(w/2,h*0.76,w*0.16,h*0.14,[[0,"rgba(255,255,235,1)"],[1,"rgba(255,230,140,0)"]]);
+});
+const SMOKE=mkSprite(64,64,(c,w,h)=>{const g=c.createRadialGradient(w/2,h/2,2,w/2,h/2,w/2);g.addColorStop(0,"rgba(70,66,62,0.55)");g.addColorStop(0.6,"rgba(90,86,82,0.25)");g.addColorStop(1,"rgba(110,105,100,0)");c.fillStyle=g;c.fillRect(0,0,w,h)});
+const GLOW=mkSprite(64,64,(c,w,h)=>{const g=c.createRadialGradient(w/2,h/2,1,w/2,h/2,w/2);g.addColorStop(0,"rgba(255,200,80,0.9)");g.addColorStop(0.4,"rgba(255,110,20,0.55)");g.addColorStop(1,"rgba(255,60,0,0)");c.fillStyle=g;c.fillRect(0,0,w,h)});
+
+function fireRender(dt,t){
+  fctx.clearRect(0,0,W,Hh);
+  if(!fire||sim.t<=0){if(flames.length)resetFx();return}
+  const T=sim.t, g=simGeom(T), Q=g.Q, lvl=sim.lv, U=g.U;
+  const [fx,fy]=ll2s(fire.lat,fire.lon); FO={x:fx,y:fy,m:mpp(fire.lat)};
+  const dwx=Math.sin(g.beta), dwy=-Math.cos(g.beta);     /* 화면상 풍하 방향 */
+  const N=96, front=frontPts(T,N).map(p=>l2s(p[0],p[1]));
+  const burnDur=4+lvl*0.4, Tb=Math.max(0,T-burnDur);
+  const inner=Tb>0?frontPts(Tb,N).map(p=>l2s(p[0],p[1])):null;
+  const poly=(pts)=>{fctx.beginPath();pts.forEach((p,i)=>i?fctx.lineTo(p[0],p[1]):fctx.moveTo(p[0],p[1]));fctx.closePath()};
+  const flick=0.85+0.15*Math.sin(t*9)+0.08*Math.sin(t*23);
+
+  /* 1) 연소 중인 영역(붉게 달아오른 띠) */
+  fctx.save();
+  const R=Math.max(20,(g.a+Math.abs(g.c))/FO.m);
+  const gr=fctx.createRadialGradient(fx,fy,2,fx+dwx*g.c/FO.m,fy+dwy*g.c/FO.m,R*1.1);
+  gr.addColorStop(0,"rgba(255,170,40,0.75)");gr.addColorStop(0.7,"rgba(255,90,10,0.62)");gr.addColorStop(1,"rgba(220,40,0,0.55)");
+  fctx.fillStyle=gr;poly(front);fctx.fill();fctx.restore();
+  /* 2) 타고 난 영역(검게 탄 자리) + 남은 불씨 */
+  if(inner){
+    fctx.fillStyle="rgba(38,24,18,0.82)";poly(inner);fctx.fill();
+    const gi=simGeom(Tb),sb=Math.sin(gi.beta),cb=Math.cos(gi.beta);
+    for(const e of embersIn){
+      const r2=e.u*e.u+e.v*e.v; if(r2>0.8)continue;
+      const x=gi.c+gi.a*e.u, y=gi.b*e.v, [sx,sy]=l2s(x*sb+y*cb,x*cb-y*sb);
+      const a=0.35+0.35*Math.sin(t*4+e.ph); fctx.fillStyle=`rgba(255,${120+Math.round(60*a)},20,${a.toFixed(2)})`;
+      fctx.beginPath();fctx.arc(sx,sy,1.2+1.4*a,0,6.283);fctx.fill();
+    }
+  }
+  /* 3) 비화(불똥)로 생기는 풍하측 비화 화재 */
+  if(sim.play&&!g.calm&&U>1){
+    spotClock+=dt;
+    const rate=0.08*lvl*Math.min(U,12)/5;               /* 초당 발생 기대값 */
+    if(spots.length<10&&Math.random()<rate*dt){
+      const head=g.c+g.a, d=head+12+Math.random()*(25+U*9+lvl*4), lat=(Math.random()*2-1)*g.b*0.7;
+      const sb=Math.sin(g.beta),cb=Math.cos(g.beta);
+      spots.push({e:d*sb+lat*cb,n:d*cb-lat*sb,t0:T});
+    }
+  }
+  spots=spots.filter(s=>s.t0<=T&&!inEll(s.e,s.n,T));
+  for(const s of spots){
+    const r=(2+(T-s.t0)*g.R0*1.6)/FO.m, [sx,sy]=l2s(s.e,s.n), rr=Math.max(4,r);
+    fctx.globalAlpha=0.9*flick;fctx.drawImage(GLOW,sx-rr*2.2,sy-rr*2.2,rr*4.4,rr*4.4);fctx.globalAlpha=1;
+    fctx.fillStyle="rgba(255,110,20,0.65)";fctx.beginPath();fctx.arc(sx,sy,rr,0,6.283);fctx.fill();
+  }
+
+  /* 4) 화염 입자 — 전선을 따라 솟구치며 바람에 눕는 불꽃 */
+  for(let i=0;i<N;i+=3){const p=front[i],dn=g.calm?1:(1+Math.cos(i/N*2*Math.PI))/2,r=(10+lvl*2.2)*(0.7+0.6*dn)*(0.85+0.3*Math.sin(t*6+i));
+    fctx.globalAlpha=0.55;fctx.drawImage(GLOW,p[0]-r,p[1]-r,r*2,r*2)}
+  fctx.globalAlpha=1;
+  const scale=Math.max(16+lvl*4,(4+Math.sqrt(Q)*1.6)/FO.m);   /* 화면에서 보이도록 최소 크기 보장 */
+  const want=Math.round(Math.min(300,50+lvl*25));
+  let perim=0; for(let i=0;i<N;i++){const a=front[i],b=front[(i+1)%N];perim+=Math.hypot(a[0]-b[0],a[1]-b[1])}
+  const spawnN=Math.min(want-flames.length,Math.ceil(want*dt*1.6));
+  for(let k=0;k<spawnN;k++){
+    let src;
+    if(spots.length&&Math.random()<0.18){const s=spots[(Math.random()*spots.length)|0],[sx,sy]=l2s(s.e,s.n),r=Math.max(4,(2+(T-s.t0)*g.R0*1.6)/FO.m),a=Math.random()*6.283;src=[sx+Math.cos(a)*r,sy+Math.sin(a)*r,0.6]}
+    else{let i=(Math.random()*N)|0; if(!g.calm&&Math.random()<0.55){i=Math.round((Math.random()-0.5)*N*0.4);i=(i+N)%N}  /* 풍하측 전선에 더 많이 */
+      const a=front[i],b=front[(i+1)%N],u=Math.random();src=[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u,1]}
+    flames.push({x:src[0]+(Math.random()-0.5)*6,y:src[1]+(Math.random()-0.5)*6,age:0,life:0.45+Math.random()*0.75,s:scale*(0.55+Math.random()*0.75)*src[2],w:0.7+Math.random()*0.5,ph:Math.random()*6.28});
+  }
+  const lean=Math.min(1.3,0.15+U/5);
+  const ux=dwx*lean, uy=-1+dwy*lean, ul=Math.hypot(ux,uy)||1, rot=Math.atan2(ux/ul,-uy/ul);
+  fctx.save();
+  if(base==="sat"||base==="vws"||document.documentElement.dataset.theme==="dark")fctx.globalCompositeOperation="lighter";
+  for(let i=flames.length-1;i>=0;i--){
+    const f=flames[i];f.age+=dt;if(f.age>f.life){flames.splice(i,1);continue}
+    const k=f.age/f.life, grow=k<0.25?k/0.25:1-(k-0.25)/0.75*0.6, h=f.s*grow*(0.9+0.12*Math.sin(t*14+f.ph));
+    const rise=f.s*1.1*dt; f.x+=ux/ul*rise; f.y+=uy/ul*rise;
+    fctx.globalAlpha=Math.max(0,(1-k)*0.95);
+    fctx.setTransform(1,0,0,1,0,0);
+    const d=FXD;fctx.setTransform(d,0,0,d,0,0);
+    fctx.translate(f.x,f.y);fctx.rotate(rot+0.18*Math.sin(t*7+f.ph));
+    fctx.drawImage(FLAME,-h*0.3*f.w,-h*0.85,h*0.6*f.w,h);
+  }
+  fctx.restore();
+  const d=FXD;fctx.setTransform(d,0,0,d,0,0);fctx.globalAlpha=1;
+
+  /* 5) 연기 — 풍하측으로 퍼지며 커지는 연기 기둥 */
+  const smokeWant=Math.round(Math.min(140,25+lvl*11));
+  if(smoke.length<smokeWant&&Math.random()<dt*smokeWant/3){
+    const i=(g.calm?(Math.random()*N):(Math.random()-0.5)*N*0.5+N)|0, p=front[i%N];
+    smoke.push({x:p[0],y:p[1],age:0,life:4+Math.random()*4,r:scale*0.6*(0.7+Math.random()*0.6)});
+  }
+  const sv=(g.calm?6:10+U*9);
+  for(let i=smoke.length-1;i>=0;i--){
+    const s=smoke[i];s.age+=dt;if(s.age>s.life){smoke.splice(i,1);continue}
+    const k=s.age/s.life; s.x+=(dwx*sv+(g.calm?0:0))*dt; s.y+=(dwy*sv-6)*dt;
+    const r=s.r*(1+k*3.2); fctx.globalAlpha=0.55*(1-k)*(k<0.15?k/0.15:1);
+    fctx.drawImage(SMOKE,s.x-r,s.y-r,r*2,r*2);
+  }
+  fctx.globalAlpha=1;
+
+  /* 6) 불똥 — 전선 앞쪽으로 날아가는 밝은 점 */
+  const spWant=Math.round(Math.min(90,10+lvl*7));
+  while(sparks.length<spWant){
+    let i=(Math.random()*N)|0; if(!g.calm&&Math.random()<0.7){i=Math.round((Math.random()-0.5)*N*0.3);i=(i+N)%N}
+    const p=front[i]; sparks.push({x:p[0],y:p[1],age:0,life:0.4+Math.random()*1.4,k:0.35+Math.random()*0.7,j:Math.random()*6.28});
+  }
+  const spd=Math.min(220,16+U*14);
+  fctx.lineCap="round";
+  for(let i=sparks.length-1;i>=0;i--){
+    const p=sparks[i], a=(g.calm?p.j:g.beta)+0.6*Math.sin(t*3+p.j), s=(g.calm?20:spd)*p.k;
+    const nx=p.x+Math.sin(a)*s*dt, ny=p.y-Math.cos(a)*s*dt-10*dt, f=1-p.age/p.life;
+    fctx.strokeStyle=`rgba(255,${Math.round(150+100*f)},${Math.round(60*f)},${(0.3+0.7*f).toFixed(2)})`;
+    fctx.lineWidth=0.8+1.4*f;fctx.beginPath();fctx.moveTo(p.x,p.y);fctx.lineTo(p.x+(nx-p.x)*0.6,p.y+(ny-p.y)*0.6);fctx.stroke();
+    p.x=nx;p.y=ny;p.age+=dt;if(p.age>p.life)sparks.splice(i,1);
+  }
+}
+function inEll(e,n,T){const g=simGeom(T),sb=Math.sin(g.beta),cb=Math.cos(g.beta),x=e*sb+n*cb,y=e*cb-n*sb;return ((x-g.c)/g.a)**2+(y/g.b)**2<=1}
+
 function fxLoop(ts){
   requestAnimationFrame(fxLoop);
-  const d=window.devicePixelRatio||1;
-  if(wfx.width!==Math.round(W*d)||wfx.height!==Math.round(Hh*d)){wfx.width=Math.round(W*d);wfx.height=Math.round(Hh*d);wctx.setTransform(d,0,0,d,0,0);parts=[];embers=[]}
+  const d=FXD;
+  for(const [cv,cx] of [[wfx,wctx],[ffx,fctx]]) if(cv.width!==Math.round(W*d)||cv.height!==Math.round(Hh*d)){cv.width=Math.round(W*d);cv.height=Math.round(Hh*d);cx.setTransform(d,0,0,d,0,0);if(cv===wfx)parts=[]}
   const dt=Math.min(0.05,Math.max(0.001,(ts-wLast)/1000)); wLast=ts;
   const onMap=!$("#vMap").hidden&&!document.hidden;
+  if(!onMap)return;
+  const t=ts/1000;
   /* 시뮬레이션 시간 진행 */
-  if(sim.play&&fire&&onMap){sim.t=Math.min(SIM_TMAX,sim.t+dt*SIM_RATE);if(sim.t>=SIM_TMAX)sim.play=false;draw();updSimUI()}
-  const windAct=windOn&&wx&&wx.ws>=0.3&&onMap&&!gest;
-  const fireAct=fire&&sim.t>0&&onMap&&!gest;
-  if(!windAct&&!fireAct){if(parts.length||embers.length){clearFx();parts=[];embers=[]}return}
+  if(sim.play&&fire){sim.t=Math.min(SIM_TMAX,sim.t+dt*SIM_RATE);if(sim.t>=SIM_TMAX)sim.play=false;draw();updSimUI()}
+  /* 화염 */
+  fireRender(dt,t);
+  /* 바람 흐름 */
+  const windAct=windOn&&wx&&wx.ws>=0.3&&!gest;
+  if(!windAct){if(parts.length){clearFx();parts=[]}return}
   wctx.globalCompositeOperation="destination-out";wctx.fillStyle="rgba(0,0,0,0.09)";wctx.fillRect(0,0,W,Hh);
   wctx.globalCompositeOperation="source-over";
-  const t=ts/1000, ws=wx?wx.ws:0, g=wx?Math.max(0,(wx.wg||ws)-ws):0;
-  const v=ws+g*0.7*Math.pow(Math.max(0,Math.sin(t*0.9)),2);   /* 돌풍이 주기적으로 지나가는 효과 */
-  const spd=Math.min(220,16+v*14), b=((wx?wx.wd:0)+180)*Math.PI/180;
-  if(windAct){
-    const n=Math.round(Math.min(280,W*Hh/1700*Math.min(1.6,0.55+ws/6)));
-    while(parts.length<n){const p={};spawn(p);p.age=Math.random()*p.life;parts.push(p)}
-    if(parts.length>n)parts.length=n;
-    const onPhoto=base==="sat"||base==="vws";
-    wctx.strokeStyle=onPhoto?"rgba(255,255,255,0.8)":"rgba(18,88,205,0.55)";
-    wctx.lineWidth=1.6;wctx.lineCap="round";wctx.beginPath();
-    for(const p of parts){
-      const a=b+0.15*Math.sin(p.x*0.011+t*0.7)+0.1*Math.sin(p.y*0.016-t*0.5), s=spd*p.k;
-      const nx=p.x+Math.sin(a)*s*dt, ny=p.y-Math.cos(a)*s*dt;
-      wctx.moveTo(p.x,p.y);wctx.lineTo(nx,ny);p.x=nx;p.y=ny;p.age+=dt;
-      if(p.age>p.life||nx<-30||nx>W+30||ny<-30||ny>Hh+30)spawn(p);
-    }
-    wctx.stroke();
-  }else if(parts.length)parts=[];
-  if(fireAct){
-    /* 화염 전선에서 불티가 풍하측으로 날리는 효과 */
-    const gm=simGeom(sim.t), want=Math.round(Math.min(160,30+simQ()*2.4));
-    const sb=Math.sin(gm.beta),cb=Math.cos(gm.beta);
-    while(embers.length<want){
-      let th=(Math.random()*2-1)*Math.PI; if(!gm.calm&&Math.random()<0.6)th*=0.35;   /* 풍하측 전선에 더 많이 */
-      const x=gm.c+gm.a*Math.cos(th), y=gm.b*Math.sin(th), e=x*sb+y*cb, nn=x*cb-y*sb, q=en2ll(e,nn), [sx,sy]=ll2s(q.lat,q.lon);
-      embers.push({x:sx,y:sy,age:0,life:0.5+Math.random()*1.3,k:0.4+Math.random()*0.8,j:Math.random()*6.28});
-    }
-    for(let i=embers.length-1;i>=0;i--){
-      const p=embers[i], a=(gm.calm?p.j:b)+0.5*Math.sin(t*3+p.j), s=(gm.calm?18:spd*0.8)*p.k;
-      const nx=p.x+Math.sin(a)*s*dt, ny=p.y-Math.cos(a)*s*dt-8*dt;
-      const f=1-p.age/p.life;
-      wctx.strokeStyle=`rgba(255,${Math.round(90+120*f)},0,${(0.25+0.7*f).toFixed(2)})`;
-      wctx.lineWidth=1.4+1.6*f;wctx.lineCap="round";wctx.beginPath();wctx.moveTo(p.x,p.y);wctx.lineTo(nx,ny);wctx.stroke();
-      p.x=nx;p.y=ny;p.age+=dt; if(p.age>p.life)embers.splice(i,1);
-    }
-  }else if(embers.length)embers=[];
+  const ws=wx.ws, gg=Math.max(0,(wx.wg||ws)-ws);
+  const v=ws+gg*0.7*Math.pow(Math.max(0,Math.sin(t*0.9)),2);   /* 돌풍이 주기적으로 지나가는 효과 */
+  const spd=Math.min(220,16+v*14), b=(wx.wd+180)*Math.PI/180;
+  const n=Math.round(Math.min(280,W*Hh/1700*Math.min(1.6,0.55+ws/6)));
+  while(parts.length<n){const p={};spawn(p);p.age=Math.random()*p.life;parts.push(p)}
+  if(parts.length>n)parts.length=n;
+  const onPhoto=base==="sat"||base==="vws";
+  wctx.strokeStyle=onPhoto?"rgba(255,255,255,0.8)":"rgba(18,88,205,0.55)";
+  wctx.lineWidth=1.6;wctx.lineCap="round";wctx.beginPath();
+  for(const p of parts){
+    const a=b+0.15*Math.sin(p.x*0.011+t*0.7)+0.1*Math.sin(p.y*0.016-t*0.5), s=spd*p.k;
+    const nx=p.x+Math.sin(a)*s*dt, ny=p.y-Math.cos(a)*s*dt;
+    wctx.moveTo(p.x,p.y);wctx.lineTo(nx,ny);p.x=nx;p.y=ny;p.age+=dt;
+    if(p.age>p.life||nx<-30||nx>W+30||ny<-30||ny>Hh+30)spawn(p);
+  }
+  wctx.stroke();
 }
 requestAnimationFrame(fxLoop);
+
 
 /* ───────── 칩·화재 지점 ───────── */
 function buildChips(){
@@ -660,8 +810,9 @@ function updateFirebar(){
   $("#firebar").classList.toggle("on",fireMode||!!fire||!!moveId);
   $("#firetxt").textContent=moveId?"새 위치를 지도에서 눌러 주세요":fireMode&&!fire?"지도를 눌러 화재 지점을 지정하세요":fireMode?"다른 곳을 누르면 지점이 바뀝니다":"화재 지점 기준 "+RADIUS+" m 조회 중";
 }
-$("#fireoff").onclick=()=>{sim.t=0;sim.play=false;fire=null;fireMode=false;moveId=null;updateFirebar();buildChips();closeSheet();draw()};
-function setFire(lat,lon){fire={lat,lon};sim.t=0;sim.play=false;updateFirebar();draw();showFire();fetchWx(false)}
+$("#fireoff").onclick=()=>{sim.t=0;sim.play=false;spots=[];resetFx();fire=null;fireMode=false;moveId=null;updateFirebar();buildChips();closeSheet();draw()};
+function setFire(lat,lon){fire={lat,lon};simCompact=true;resetFx();sim.t=0;updateFirebar();showFire();startSim();fetchWx(false)}
+function startSim(){sim.t=0;spots=[];resetFx();sim.play=true;fitFire()}
 
 /* ───────── 시트 ───────── */
 function closeSheet(){selId=null;$("#sheet").hidden=true;draw()}
@@ -686,10 +837,10 @@ function select(id){
   o+=`</div><div class="note num" style="margin-bottom:10px">위치 ${h.lat.toFixed(5)}, ${h.lon.toFixed(5)}${h.pipe?" · 관로 "+esc(h.pipe):""}</div>
    <div class="btns"><button class="btn pri" id="shSurvey">조사 입력</button><button class="btn" id="shFire">여기를 화재 지점으로</button><button class="btn" id="shMove">위치 수정</button></div>`;
   if(recs.length)o+=`<h3>최근 현장 조사</h3>`+recs.map(recHTML).join("");
-  $("#sheetBody").innerHTML=o;$("#sheet").hidden=false;
+  $("#sheetBody").innerHTML=o;$("#sheet").hidden=false;$("#sheet").classList.remove("compact");
   $("#shClose").onclick=closeSheet;
   $("#shSurvey").onclick=()=>openSurvey(id);
-  $("#shFire").onclick=()=>{fire={lat:h.lat,lon:h.lon};sim.t=0;sim.play=false;selId=null;updateFirebar();draw();showFire()};
+  $("#shFire").onclick=()=>{fire={lat:h.lat,lon:h.lon};selId=null;simCompact=true;resetFx();sim.t=0;updateFirebar();showFire();startSim()};
   $("#shMove").onclick=()=>{moveId=id;$("#sheet").hidden=true;updateFirebar();draw()};
   draw();
 }
@@ -714,7 +865,7 @@ function showFire(){
   const near=[...L.stations,...L.sources].map(s=>({s,d:dist({lat:s.pos[0],lon:s.pos[1]},fire)})).sort((a,b)=>a.d-b.d).slice(0,3);
   if(near.length)o+=`<h3>가까운 소방서·대체 수원 (예시 위치)</h3>`+near.map(n=>`<div class="rec"><div class="h"><b>${esc(n.s.name)}</b><span class="pill mute">${esc(n.s.kind)}</span><span class="spacer"></span><span class="num">${Math.round(n.d)} m</span></div></div>`).join("");
   $("#sheetBody").innerHTML=o;$("#sheet").hidden=false;
-  $("#shClose").onclick=()=>{$("#sheet").hidden=true;sim.play=false};
+  $("#shClose").onclick=()=>{$("#sheet").hidden=true;$("#sheet").classList.remove("compact");sim.play=false};
   bindSim();
   $("#sheetBody").querySelectorAll(".row").forEach(b=>b.onclick=()=>{const h=H.find(v=>v.id===b.dataset.id);flyTo(h.lat,h.lon,16.5);select(h.id)});
 }
