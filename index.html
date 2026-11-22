@@ -121,10 +121,14 @@ table.rt td{padding:6px 4px;border-bottom:1px solid var(--line)}
 .order small{color:var(--ink2)}
 .dirrow{display:flex;align-items:center;gap:8px}.dirrow input{flex:1;accent-color:#6d28d9}
 details.algo summary{cursor:pointer}details.algo ol{padding-left:20px;margin:8px 0 0;font-size:12.5px;display:flex;flex-direction:column;gap:4px}
-.firebar button{margin-left:auto;background:transparent;border:1px solid currentColor;border-radius:6px;padding:3px 9px;color:inherit;font-size:12px}
+.firebar button{white-space:nowrap;flex:0 0 auto;margin-left:auto;background:transparent;border:1px solid currentColor;border-radius:6px;padding:3px 9px;color:inherit;font-size:12px}
 .sheet{position:absolute;left:0;right:0;bottom:0;z-index:5;background:var(--surface);border-top-left-radius:16px;border-top-right-radius:16px;box-shadow:var(--shadow);max-height:56%;display:flex;flex-direction:column;border-top:1px solid var(--line)}
 .sheet[hidden]{display:none}
-.sheet .grab{width:38px;height:4px;border-radius:2px;background:var(--line);margin:8px auto 2px;flex:0 0 auto}
+.sheet{transition:transform .25s ease}
+.sheet.min{transform:translateY(calc(100% - 78px))}
+.sheet .grab{position:relative;height:26px;flex:0 0 auto;touch-action:none;cursor:grab}
+.sheet .grab::before{content:"";position:absolute;left:50%;top:9px;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:var(--ink2);opacity:.45}
+.sheet .sh-head,.sheet .sim .top{touch-action:none}
 .sheet .sbody{overflow-y:auto;padding-top:6px;padding-bottom:max(16px,env(safe-area-inset-bottom,0px));-webkit-overflow-scrolling:touch}
 .sh-head{display:flex;gap:12px;align-items:center}
 .badge{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:24px;flex:0 0 auto}
@@ -562,7 +566,7 @@ function updSimUI(){
 function simPanel(){
   return `<div class="fsec sim"><div class="top"><b>화재 확산 시뮬레이션</b><span class="lv" id="simLv"></span><button class="tog" id="simTog" type="button"></button></div>
    <button class="btn pri" id="simOps" type="button" style="width:100%;margin-top:8px;background:#1d4ed8;border-color:#1d4ed8">작전 명령 보기</button>
-   <div class="seg" role="group" aria-label="화재 강도">${PRESET.map(p=>`<button type="button" data-lv="${p.lv}" aria-pressed="${presetOf(sim.lv)===p.k}">${p.k}<small>${LV_MW[p.lv-1]} MW</small></button>`).join("")}</div>
+   <div class="seg" role="group" aria-label="화재 강도">${PRESET.map(p=>`<button type="button" data-lv="${p.lv}" aria-pressed="${presetOf(sim.lv)===p.k}">${p.k}<small>${presetOf(sim.lv)===p.k?simQ():LV_MW[p.lv-1]} MW</small></button>`).join("")}</div>
    <label class="note" for="simLevel">세부 단계 (1~10단계 · ${LV_MW[0]}~${LV_MW[9]} MW)</label>
    <input type="range" id="simLevel" min="1" max="10" step="1" value="${sim.lv}">
    <div class="ticks">${LV_MW.map(v=>`<span>${v}</span>`).join("")}</div>
@@ -572,7 +576,7 @@ function simPanel(){
    <div class="note" style="margin-top:4px">풍향·풍속을 반영한 타원 확산의 가시화용 단순 모델입니다. 건물 구조·연소물·지형은 반영하지 않으므로 실제 예측값으로 쓰지 마세요.</div></div>`;
 }
 function bindSim(){
-  const setLv=v=>{sim.lv=v;ls.set("gc_simlv",v);$("#simLevel").value=v;document.querySelectorAll(".seg button").forEach(b=>b.setAttribute("aria-pressed",presetOf(v)===presetOf(+b.dataset.lv)));if(fire)fitFire();draw();updSimUI()};
+  const setLv=v=>{sim.lv=v;ls.set("gc_simlv",v);$("#simLevel").value=v;document.querySelectorAll(".seg button").forEach(b=>{const on=presetOf(v)===presetOf(+b.dataset.lv);b.setAttribute("aria-pressed",on);b.querySelector("small").textContent=(on?simQ():LV_MW[+b.dataset.lv-1])+" MW"});if(fire)fitFire();draw();updSimUI()};
   $("#simLevel").oninput=e=>setLv(+e.target.value);
   $("#simOps").onclick=openOps;
   const sh=$("#sheet"); sh.classList.toggle("compact",simCompact);
@@ -586,7 +590,7 @@ function bindSim(){
 function fitFire(){
   if(!fire)return; size();
   const pts=frontPts(SIM_TMAX,48).concat([[0,0]]), es=pts.map(p=>p[0]), ns=pts.map(p=>p[1]);
-  const shEl=$("#sheet"), sh=shEl.hidden?0:shEl.getBoundingClientRect().height;
+  const shEl=$("#sheet"), sh=shEl.hidden?0:Math.max(0,$("#mapwrap").getBoundingClientRect().bottom-shEl.getBoundingClientRect().top);
   const top=Math.min(240,Hh*0.36), bot=Math.max(top+80,Hh-sh-14), left=14, right=W-64;
   const bw=Math.max(...es)-Math.min(...es), bh=Math.max(...ns)-Math.min(...ns);
   const mpx=Math.max(bw/(right-left),bh/(bot-top),0.25)*1.08;
@@ -736,7 +740,7 @@ function opsFit(){
   const o=computeOps(); size();
   const pts=[[0,0],o.hd].concat(o.first.out.map(r=>[r.e,r.n]),o.second.out.map(r=>[r.e,r.n]));
   const es=pts.map(p=>p[0]),ns=pts.map(p=>p[1]);
-  const shEl=$("#sheet"),sh=shEl.hidden?0:shEl.getBoundingClientRect().height;
+  const shEl=$("#sheet"),sh=shEl.hidden?0:Math.max(0,$("#mapwrap").getBoundingClientRect().bottom-shEl.getBoundingClientRect().top);
   const top=Math.min(240,Hh*0.36),bot=Math.max(top+80,Hh-sh-14),left=20,right=W-70;
   const mpx=Math.max((Math.max(...es)-Math.min(...es))/(right-left),(Math.max(...ns)-Math.min(...ns))/(bot-top),0.3)*1.15;
   setZ(Math.min(18,Math.log2(40075016.686*Math.cos(fire.lat*Math.PI/180)/(256*mpx))));
@@ -968,6 +972,34 @@ function fxLoop(ts){
 requestAnimationFrame(fxLoop);
 
 
+/* ───────── 하단 시트: 손잡이를 끌어 내리면 접히고, 올리면 펼쳐짐 ───────── */
+const sheetEl=$("#sheet"); let sdrag=null;
+function setSheetMin(on){sheetEl.classList.toggle("min",on)}
+sheetEl.addEventListener("pointerdown",e=>{
+  if(!e.target.closest(".grab,.sh-head,.sim .top")||e.target.closest("button,input,a"))return;
+  const r=sheetEl.getBoundingClientRect();
+  sdrag={y:e.clientY,dy:0,id:e.pointerId,min:sheetEl.classList.contains("min"),h:r.height,grab:!!e.target.closest(".grab")};
+  try{sheetEl.setPointerCapture(e.pointerId)}catch(_){}
+  sheetEl.style.transition="none";
+});
+sheetEl.addEventListener("pointermove",e=>{
+  if(!sdrag||e.pointerId!==sdrag.id)return;
+  sdrag.dy=e.clientY-sdrag.y; const peek=sdrag.h-78;
+  const ty=Math.max(0,Math.min(peek,(sdrag.min?peek:0)+sdrag.dy));
+  sheetEl.style.transform=`translateY(${ty}px)`;
+});
+function endSheet(e){
+  if(!sdrag||e.pointerId!==sdrag.id)return;
+  const {dy,min,grab}=sdrag; sdrag=null; sheetEl.style.transition=""; sheetEl.style.transform="";
+  if(Math.abs(dy)<6){ if(grab)setSheetMin(!min); return }        /* 손잡이를 톡 누르면 접기/펼치기 */
+  if(dy>40){                                                       /* 아래로: 자세히 → 기본 → 접힘 */
+    if(!min&&fire&&!simCompact&&$("#simTog")&&dy<160){$("#simTog").click()} else setSheetMin(true);
+  }else if(dy<-40){                                                /* 위로: 접힘 → 기본 → 자세히 */
+    if(min)setSheetMin(false); else if(fire&&simCompact&&$("#simTog"))$("#simTog").click();
+  }
+}
+sheetEl.addEventListener("pointerup",endSheet); sheetEl.addEventListener("pointercancel",endSheet);
+
 /* ───────── 칩·화재 지점 ───────── */
 function buildChips(){
   const defs=[["1","1등급"],["2","2등급"],["3","3등급"],["4","4등급"],["X","등급 외"],["est","추정 포함"]];
@@ -1012,7 +1044,7 @@ function select(id){
   o+=`</div><div class="note num" style="margin-bottom:10px">위치 ${h.lat.toFixed(5)}, ${h.lon.toFixed(5)}${h.pipe?" · 관로 "+esc(h.pipe):""}</div>
    <div class="btns"><button class="btn pri" id="shSurvey">조사 입력</button><button class="btn" id="shFire">여기를 화재 지점으로</button><button class="btn" id="shMove">위치 수정</button></div>`;
   if(recs.length)o+=`<h3>최근 현장 조사</h3>`+recs.map(recHTML).join("");
-  $("#sheetBody").innerHTML=o;$("#sheet").hidden=false;$("#sheet").classList.remove("compact");
+  $("#sheetBody").innerHTML=o;$("#sheet").hidden=false;$("#sheet").classList.remove("min");$("#sheet").classList.remove("compact");
   $("#shClose").onclick=closeSheet;
   $("#shSurvey").onclick=()=>openSurvey(id);
   $("#shFire").onclick=()=>{fire={lat:h.lat,lon:h.lon};selId=null;simCompact=true;resetFx();sim.t=0;updateFirebar();showFire();startSim()};
@@ -1039,7 +1071,7 @@ function showFire(){
     <span class="r"><b class="num">${Math.round(r.d)} m</b>${fmtQ(r.p.q)} L/min${z.used.has(r.h.id)?"":" · 합산 제외"}</span></button>`).join("");
   const near=[...L.stations,...L.sources].map(s=>({s,d:dist({lat:s.pos[0],lon:s.pos[1]},fire)})).sort((a,b)=>a.d-b.d).slice(0,3);
   if(near.length)o+=`<h3>가까운 소방서·대체 수원 (예시 위치)</h3>`+near.map(n=>`<div class="rec"><div class="h"><b>${esc(n.s.name)}</b><span class="pill mute">${esc(n.s.kind)}</span><span class="spacer"></span><span class="num">${Math.round(n.d)} m</span></div></div>`).join("");
-  $("#sheetBody").innerHTML=o;$("#sheet").hidden=false;
+  $("#sheetBody").innerHTML=o;$("#sheet").hidden=false;$("#sheet").classList.remove("min");
   $("#shClose").onclick=()=>{$("#sheet").hidden=true;$("#sheet").classList.remove("compact");sim.play=false};
   bindSim();
   $("#sheetBody").querySelectorAll(".row").forEach(b=>b.onclick=()=>{const h=H.find(v=>v.id===b.dataset.id);flyTo(h.lat,h.lon,16.5);select(h.id)});
