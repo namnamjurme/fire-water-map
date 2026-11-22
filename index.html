@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>소방용수 관리지도</title>
+<meta name="theme-color" content="#c4302b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="소방용수지도">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#f3f5f4; --surface:#ffffff; --surface2:#eaeeed; --ink:#18201f; --ink2:#55615f; --line:#d3dad8;
+  --accent:#c4302b; --accent-ink:#ffffff;
+  --land:#eef1ee; --block:#e1e6e2; --road1:#ffffff; --road2:#f9faf9; --roadcase:#c5cdc9; --river:#b9d3e4;
+  --g1:#1d6fd1; --g2:#2e9a55; --g3:#e3b50d; --g4:#ffffff; --g4ink:#d1262b; --gx:#ffffff; --gxink:#111111;
+  --ring:#111111; --warn:#b36b00; --danger:#c4302b; --ok:#2e7d4f;
+  --font:"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,-apple-system,sans-serif;
+  --mono:ui-monospace,"IBM Plex Mono",Menlo,Consolas,monospace;
+  --shadow:0 -6px 24px rgba(20,30,28,.16);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121817; --surface:#1b2322; --surface2:#242e2d; --ink:#e8eeec; --ink2:#9fadaa; --line:#34413f;
+  --accent:#ff6a5f; --accent-ink:#1a0806;
+  --land:#161d1c; --block:#1f2827; --road1:#3a4745; --road2:#2f3b39; --roadcase:#0f1514; --river:#264257;
+  --g1:#4a9bff; --g2:#4cc27a; --g3:#f0c931; --g4:#f4f6f5; --g4ink:#e5383b; --gx:#f4f6f5; --gxink:#111111;
+  --ring:#f4f6f5; --warn:#f0b04a; --danger:#ff6a5f; --ok:#4cc27a;
+  --shadow:0 -6px 24px rgba(0,0,0,.5); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121817; --surface:#1b2322; --surface2:#242e2d; --ink:#e8eeec; --ink2:#9fadaa; --line:#34413f;
+  --accent:#ff6a5f; --accent-ink:#1a0806;
+  --land:#161d1c; --block:#1f2827; --road1:#3a4745; --road2:#2f3b39; --roadcase:#0f1514; --river:#264257;
+  --g1:#4a9bff; --g2:#4cc27a; --g3:#f0c931; --g4:#f4f6f5; --g4ink:#e5383b; --gx:#f4f6f5; --gxink:#111111;
+  --ring:#f4f6f5; --warn:#f0b04a; --danger:#ff6a5f; --ok:#4cc27a;
+  --shadow:0 -6px 24px rgba(0,0,0,.5); color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono)}
+#app{height:100%;display:flex;flex-direction:column;position:relative;padding-top:env(safe-area-inset-top,0px)}
+.gut{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{display:flex;align-items:center;gap:10px;padding-block:8px;background:var(--surface);border-bottom:1px solid var(--line);flex:0 0 auto}
+header.top h1{font-size:16px;margin:0;font-weight:700;letter-spacing:-.01em;white-space:nowrap}
+header.top .sub{font-size:12px;color:var(--ink2);white-space:nowrap}
+.spacer{flex:1}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--surface2);color:var(--ink2);border:1px solid var(--line);white-space:nowrap}
+.tag.demo{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:8px;min-width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;padding:0 8px;font-weight:700}
+main{flex:1 1 auto;min-height:0;position:relative}
+.view{position:absolute;inset:0}
+.view[hidden]{display:none}
+#mapwrap{position:absolute;inset:0;background:var(--land);touch-action:none;overflow:hidden}
+#tiles{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+#tiles img{position:absolute;left:0;top:0;max-width:none;transform-origin:0 0;user-select:none;-webkit-user-drag:none}
+#map{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;user-select:none;-webkit-user-select:none}
+.chips{position:absolute;left:0;right:0;top:8px;display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;z-index:2}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:5px 11px 5px 7px;font-size:12px;font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.chip[aria-pressed="false"]{opacity:.55}
+.chip.act{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);padding-left:11px;opacity:1}
+.dot{width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;line-height:1;flex:0 0 auto}
+.gd1{background:var(--g1);color:#fff}.gd2{background:var(--g2);color:#fff}.gd3{background:var(--g3);color:#241c00}
+.gd4{background:var(--g4);color:var(--g4ink);border:1.5px solid var(--g4ink)}
+.gdx{background:var(--gx);color:var(--gxink);border:1.5px solid var(--ring)}
+.gde{background:transparent;border:1.5px dashed var(--ink2);color:var(--ink2)}
+.mapctl{position:absolute;right:max(12px,env(safe-area-inset-right,0px));top:96px;display:flex;flex-direction:column;gap:6px;z-index:2}
+.mapctl .iconbtn{box-shadow:0 1px 3px rgba(0,0,0,.25);font-size:18px;font-weight:500;min-width:44px;height:44px}
+.mapctl .sm{font-size:12px}
+.mapnote{position:absolute;left:max(12px,env(safe-area-inset-left,0px));bottom:6px;font-size:11px;color:var(--ink2);background:color-mix(in srgb,var(--surface) 90%,transparent);padding:2px 8px;border-radius:6px;z-index:2;max-width:75%}
+.scalebar{position:absolute;left:max(12px,env(safe-area-inset-left,0px));bottom:30px;z-index:2;font-size:11px;color:var(--ink);pointer-events:none;background:color-mix(in srgb,var(--surface) 75%,transparent);padding:2px 6px;border-radius:4px}
+.scalebar i{display:block;height:6px;border:2px solid var(--ink);border-top:none;margin-bottom:2px}
+.firebar{position:absolute;left:12px;right:12px;top:48px;z-index:2;display:none;background:var(--accent);color:var(--accent-ink);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:500;align-items:center;gap:8px}
+.firebar.on{display:flex}
+.firebar button{margin-left:auto;background:transparent;border:1px solid currentColor;border-radius:6px;padding:3px 9px;color:inherit;font-size:12px}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:5;background:var(--surface);border-top-left-radius:16px;border-top-right-radius:16px;box-shadow:var(--shadow);max-height:62%;display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.sheet[hidden]{display:none}
+.sheet .grab{width:38px;height:4px;border-radius:2px;background:var(--line);margin:8px auto 2px;flex:0 0 auto}
+.sheet .sbody{overflow-y:auto;padding-top:6px;padding-bottom:max(16px,env(safe-area-inset-bottom,0px));-webkit-overflow-scrolling:touch}
+.sh-head{display:flex;gap:12px;align-items:center}
+.badge{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:24px;flex:0 0 auto}
+.badge.gde{background:var(--surface);border:3px dashed currentColor}
+.sh-title{min-width:0}
+.sh-title .id{font-family:var(--mono);font-size:13px;font-weight:500}
+.sh-title .addr{color:var(--ink2);font-size:12px;overflow-wrap:anywhere}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:12px 0}
+.kv div{background:var(--surface2);border-radius:10px;padding:8px 10px;min-width:0}
+.kv b{display:block;font-size:11px;font-weight:500;color:var(--ink2)}
+.kv span{font-size:16px;font-weight:700}
+.kv small{font-size:11px;color:var(--ink2);font-weight:400}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 14px;font-weight:700;font-size:13px;min-height:40px}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.sm{padding:5px 10px;min-height:32px;font-size:12px}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.pill{display:inline-block;font-size:11px;font-weight:700;border-radius:99px;padding:1px 8px}
+.pill.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.pill.warn{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn)}
+.pill.bad{background:color-mix(in srgb,var(--danger) 18%,transparent);color:var(--danger)}
+.pill.mute{background:var(--surface2);color:var(--ink2)}
+h3{font-size:12px;letter-spacing:.04em;color:var(--ink2);margin:14px 0 6px;font-weight:700}
+.scroll{position:absolute;inset:0;overflow-y:auto;background:var(--bg);padding-bottom:16px;-webkit-overflow-scrolling:touch}
+.toolbar{position:sticky;top:0;background:var(--bg);padding-block:10px;z-index:3;display:flex;flex-direction:column;gap:8px}
+.search{width:100%;border:1px solid var(--line);border-radius:10px;padding:9px 12px;background:var(--surface)}
+.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 4px;text-align:center;font-size:11px;color:var(--ink2)}
+.stat b{display:block;font-size:17px;color:var(--ink);line-height:1.2}
+.row{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;width:100%;text-align:left}
+.row .dot{width:34px;height:34px;font-size:16px}
+.row .mid{min-width:0;flex:1}
+.row .mid .t{font-family:var(--mono);font-size:12.5px;font-weight:500}
+.row .mid .a{font-size:12px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .r{text-align:right;font-size:12px;color:var(--ink2);white-space:nowrap}
+.row .r b{display:block;color:var(--ink);font-size:14px}
+nav.tabs{display:flex;background:var(--surface);border-top:1px solid var(--line);flex:0 0 auto;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav.tabs button{flex:1;border:0;background:transparent;padding:10px 4px 9px;font-size:12px;font-weight:700;color:var(--ink2);display:flex;flex-direction:column;align-items:center;gap:2px;min-height:52px}
+nav.tabs button[aria-selected="true"]{color:var(--accent)}
+nav.tabs svg{width:22px;height:22px}
+.modal{position:absolute;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column}
+.modal[hidden]{display:none}
+.modal .mh{display:flex;align-items:center;gap:8px;padding-block:10px;background:var(--surface);border-bottom:1px solid var(--line)}
+.modal .mh h2{font-size:15px;margin:0;flex:1}
+.modal .mb{flex:1;overflow-y:auto;padding-block:12px 24px}
+.modal .mf{padding-block:10px;background:var(--surface);border-top:1px solid var(--line);display:flex;gap:8px;padding-bottom:max(10px,env(safe-area-inset-bottom,0px))}
+.modal .mf .btn{flex:1}
+.fld{display:flex;flex-direction:column;gap:4px;margin-bottom:12px;min-width:0}
+.fld label,.fld .l{font-size:12px;font-weight:700;color:var(--ink2)}
+.fld input,.fld select,.fld textarea{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 11px;min-width:0;width:100%}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.checks{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.checks label,.radios label{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 10px;font-size:13px;font-weight:500;color:var(--ink)}
+.radios{display:grid;gap:8px}
+.checks input,.radios input{width:18px;height:18px;accent-color:var(--accent);flex:0 0 auto}
+.live{display:flex;align-items:center;gap:12px;background:var(--surface2);border-radius:12px;padding:10px 12px}
+.live .dot{width:40px;height:40px;font-size:20px}
+.fsec{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+.fsec>h3{margin-top:0}
+.note{font-size:12px;color:var(--ink2)}
+.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:72px;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:10px;font-size:13px;font-weight:500;z-index:50;max-width:88%}
+.toast[hidden]{display:none}
+.empty{color:var(--ink2);text-align:center;padding:36px 12px;font-size:13px}
+.rec{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+.rec .h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rec .h .mono{font-size:12.5px;font-weight:500}
+.rec .m{font-size:12px;color:var(--ink2);margin-top:4px;overflow-wrap:anywhere}
+@media (min-width:900px){
+  .sheet{left:auto;right:16px;bottom:16px;width:400px;border-radius:16px;max-height:calc(100% - 32px)}
+  .modal{left:auto;width:460px;right:0;border-left:1px solid var(--line)}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top gut">
+    <div><h1>소방용수 관리지도</h1><div class="sub">김천시 · 성능 기반 관리체계 시범</div></div>
+    <span class="tag demo" id="dataTag">예시 자료</span>
+    <span class="spacer"></span>
+    <button class="iconbtn" id="btnSet" aria-label="지도·자료 설정">설정</button>
+  </header>
+  <main>
+    <section class="view" id="vMap">
+      <div id="mapwrap">
+        <div id="tiles"></div>
+        <svg id="map" role="img" aria-label="소방용수시설 지도"></svg>
+        <div class="chips gut" id="chips"></div>
+        <div class="firebar gut" id="firebar"><span id="firetxt"></span><button id="fireoff">해제</button></div>
+        <div class="mapctl">
+          <button class="iconbtn" id="zin" aria-label="확대">+</button>
+          <button class="iconbtn" id="zout" aria-label="축소">−</button>
+          <button class="iconbtn sm" id="zfit">전체</button>
+          <button class="iconbtn sm" id="zgps">내 위치</button>
+          <button class="iconbtn sm" id="zbase">배경</button>
+        </div>
+        <div class="scalebar" id="scalebar"></div>
+        <div class="mapnote" id="mapnote"></div>
+      </div>
+      <div class="sheet" id="sheet" hidden><div class="grab"></div><div class="sbody gut" id="sheetBody"></div></div>
+    </section>
+    <section class="view" id="vList" hidden>
+      <div class="scroll gut">
+        <div class="toolbar"><input class="search" id="q" type="search" placeholder="식별번호·주소 검색" aria-label="검색"><div class="stats" id="stats"></div></div>
+        <div id="listBody"></div>
+      </div>
+    </section>
+    <section class="view" id="vRec" hidden>
+      <div class="scroll gut">
+        <div class="toolbar"><div style="display:flex;align-items:center;gap:8px"><b style="font-size:15px">현장 조사 기록</b><span class="tag">이 기기에 저장</span><span class="spacer"></span><button class="btn sm" id="btnCsv">CSV</button><button class="btn sm pri" id="btnNew">+ 조사 입력</button></div></div>
+        <div id="recBody"></div>
+      </div>
+    </section>
+    <div class="modal" id="form" hidden>
+      <div class="mh gut"><button class="iconbtn" id="fClose" aria-label="닫기">✕</button><h2 id="fTitle"></h2></div>
+      <div class="mb gut" id="fBody"></div>
+      <div class="mf gut" id="fFoot"></div>
+    </div>
+    <div class="toast" id="toast" hidden></div>
+  </main>
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-v="vMap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg>지도</button>
+    <button role="tab" aria-selected="false" data-v="vList"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>목록</button>
+    <button role="tab" aria-selected="false" data-v="vRec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7"/></svg>조사기록</button>
+  </nav>
+</div>
+<input type="file" id="fileIn" accept=".csv,text/csv" hidden>
+
+<script>
+/* ═════ 예시 자료 (실제 자료로 교체하려면 설정 > 소화전 CSV 가져오기) ═════ */
+const SAMPLE={"hydrants":[{"id":"KB-GC-0001","addr":"평화동 중앙로(예시) 인근","type":"지상식","dia":150,"pipe":"A1-3","measured":false,"estQ":2400,"lat":36.139899,"lon":128.125458},{"id":"KB-GC-0002","addr":"지좌동 시청로(예시) 인근","type":"지하식","dia":150,"pipe":"A2-3","measured":true,"ps":0.32,"pr":0.23,"qf":2400,"date":"2026-10-19","kPrev":4954.8,"lat":36.14368,"lon":128.114101},{"id":"KB-GC-0003","addr":"대신동 중앙로(예시) 인근","type":"지상식","dia":150,"pipe":"A1-3","measured":true,"ps":0.45,"pr":0.18,"qf":3390,"date":"2026-10-19","kPrev":8237.4,"lat":36.140189,"lon":128.12964},{"id":"KB-GC-0004","addr":"성내동 중앙로(예시) 인근","type":"지하식","dia":150,"pipe":"A1-1","measured":false,"estQ":1700,"lat":36.139438,"lon":128.100641},{"id":"KB-GC-0005","addr":"남산동 2번 세로(예시) 인근","type":"지상식","dia":100,"pipe":"C2-3","measured":false,"estQ":1800,"lat":36.14699,"lon":128.106692},{"id":"KB-GC-0006","addr":"부곡동 시청로(예시) 인근","type":"지하식","dia":150,"pipe":"A2-1","measured":true,"ps":0.09,"pr":0.05,"qf":3280,"date":"2026-10-21","kPrev":14381.0,"lat":36.129743,"lon":128.113111},{"id":"KB-GC-0007","addr":"신음동 시청로(예시) 인근","type":"지하식","dia":150,"pipe":"A2-2","measured":true,"ps":0.49,"pr":0.14,"qf":1720,"date":"2026-10-14","kPrev":3929.0,"lat":36.139981,"lon":128.113745},{"id":"KB-GC-0008","addr":"지좌동 시청로(예시) 인근","type":"지하식","dia":150,"pipe":"A2-3","measured":false,"estQ":2200,"lat":36.145859,"lon":128.114223},{"id":"KB-GC-0009","addr":"교동 1번 가로(예시) 인근","type":"지상식","dia":100,"pipe":"B1-2","measured":true,"ps":0.24,"pr":0.17,"qf":1590,"date":"2026-10-14","kPrev":2899.5,"lat":36.131652,"lon":128.110541},{"id":"KB-GC-0010","addr":"남산동 역앞로(예시) 인근","type":"지상식","dia":150,"pipe":"A3-3","measured":true,"ps":0.36,"pr":0.24,"qf":2180,"date":"2026-10-28","kPrev":3647.5,"lat":36.14424,"lon":128.120152},{"id":"KB-GC-0011","addr":"지좌동 4번 세로(예시) 인근","type":"지하식","dia":100,"pipe":"C4-2","measured":true,"ps":0.39,"pr":0.08,"qf":1010,"date":"2026-10-28","kPrev":3368.8,"lat":36.143146,"lon":128.127226},{"id":"KB-GC-0012","addr":"대신동 3번 가로(예시) 인근","type":"지하식","dia":100,"pipe":"B3-1","measured":false,"estQ":1200,"lat":36.144195,"lon":128.09885},{"id":"KB-GC-0013","addr":"신음동 1번 가로(예시) 인근","type":"지하식","dia":100,"pipe":"B1-3","measured":true,"ps":0.46,"pr":0.29,"qf":2110,"date":"2026-11-09","kPrev":3696.4,"lat":36.13176,"lon":128.125324},{"id":"KB-GC-0014","addr":"대신동 시청로(예시) 인근","type":"지하식","dia":150,"pipe":"A2-2","measured":false,"estQ":2200,"lat":36.136797,"lon":128.1136},{"id":"KB-GC-0015","addr":"성내동 역앞로(예시) 인근","type":"지상식","dia":150,"pipe":"A3-2","measured":true,"ps":0.47,"pr":0.05,"qf":3220,"date":"2026-10-19","kPrev":14117.9,"lat":36.138443,"lon":128.111398},{"id":"KB-GC-0016","addr":"지좌동 역앞로(예시) 인근","type":"지상식","dia":150,"pipe":"A3-1","measured":true,"ps":0.59,"pr":0.03,"qf":1720,"date":"2026-10-19","kPrev":9735.7,"lat":36.135369,"lon":128.106181},{"id":"KB-GC-0017","addr":"교동 4번 가로(예시) 인근","type":"지하식","dia":100,"pipe":"B4-3","measured":true,"ps":0.4,"pr":0.26,"qf":1610,"date":"2026-10-12","kPrev":3095.6,"lat":36.14803,"lon":128.125424},{"id":"KB-GC-0018","addr":"신음동 4번 가로(예시) 인근","type":"지상식","dia":100,"pipe":"B4-2","measured":true,"ps":0.31,"pr":0.18,"qf":520,"date":"2026-10-14","kPrev":1178.5,"lat":36.148165,"lon":128.110864},{"id":"KB-GC-0019","addr":"신음동 1번 가로(예시) 인근","type":"지하식","dia":100,"pipe":"B1-1","measured":false,"estQ":1200,"lat":36.131823,"lon":128.102921},{"id":"KB-GC-0020","addr":"남산동 2번 가로(예시) 인근","type":"지하식","dia":100,"pipe":"B2-3","measured":true,"ps":0.49,"pr":0.31,"qf":1310,"date":"2026-10-21","kPrev":2262.3,"lat":36.135332,"lon":128.129162},{"id":"KB-GC-0021","addr":"남산동 역앞로(예시) 인근","type":"지상식","dia":150,"pipe":"A3-3","measured":true,"ps":0.53,"pr":0.07,"qf":2490,"date":"2026-10-28","kPrev":9226.8,"lat":36.146791,"lon":128.126692},{"id":"KB-GC-0022","addr":"대신동 중앙로(예시) 인근","type":"지하식","dia":150,"pipe":"A1-1","measured":true,"ps":0.55,"pr":0.13,"qf":2320,"date":"2026-11-04","kPrev":6370.8,"lat":36.139474,"lon":128.096548},{"id":"KB-GC-0023","addr":"신음동 중앙로(예시) 인근","type":"지상식","dia":150,"pipe":"A1-1","measured":true,"ps":0.56,"pr":0.05,"qf":2940,"date":"2026-11-09","kPrev":12890.3,"lat":36.139574,"lon":128.105335},{"id":"KB-GC-0024","addr":"교동 중앙로(예시) 인근","type":"지하식","dia":150,"pipe":"A1-3","measured":true,"ps":0.11,"pr":0.07,"qf":2880,"date":"2026-10-28","kPrev":10777.6,"lat":36.139728,"lon":128.121042},{"id":"KB-GC-0025","addr":"부곡동 역앞로(예시) 인근","type":"지상식","dia":150,"pipe":"A3-2","measured":true,"ps":0.4,"pr":0.15,"qf":2930,"date":"2026-11-09","kPrev":7799.2,"lat":36.141772,"lon":128.116214},{"id":"KB-GC-0026","addr":"성내동 3번 가로(예시) 인근","type":"지상식","dia":100,"pipe":"B3-2","measured":true,"ps":0.28,"pr":0.14,"qf":2170,"date":"2026-10-21","kPrev":5471.3,"lat":36.14415,"lon":128.107148},{"id":"KB-GC-0027","addr":"남산동 2번 가로(예시) 인근","type":"지상식","dia":100,"pipe":"B2-2","measured":false,"estQ":2100,"lat":36.135676,"lon":128.110163},{"id":"KB-GC-0028","addr":"남산동 2번 세로(예시) 인근","type":"지상식","dia":100,"pipe":"C2-1","measured":true,"ps":0.34,"pr":0.23,"qf":1510,"date":"2026-10-21","kPrev":3117.4,"lat":36.136816,"lon":128.106692},{"id":"KB-GC-0029","addr":"대신동 3번 가로(예시) 인근","type":"지상식","dia":100,"pipe":"B3-2","measured":true,"ps":0.29,"pr":0.15,"qf":1850,"date":"2026-10-14","kPrev":4506.3,"lat":36.143843,"lon":128.11875},{"id":"KB-GC-0030","addr":"성내동 시청로(예시) 인근","type":"지하식","dia":150,"pipe":"A2-1","measured":true,"ps":0.48,"pr":0.27,"qf":2740,"date":"2026-11-04","kPrev":5220.9,"lat":36.133062,"lon":128.113266},{"id":"KB-GC-0031","addr":"교동 3번 세로(예시) 인근","type":"지상식","dia":100,"pipe":"C3-3","measured":true,"ps":0.35,"pr":0.08,"qf":550,"date":"2026-10-14","kPrev":1834.5,"lat":36.144602,"lon":128.120207},{"id":"KB-GC-0032","addr":"지좌동 4번 가로(예시) 인근","type":"지하식","dia":100,"pipe":"B4-1","measured":true,"ps":0.33,"pr":0.19,"qf":1320,"date":"2026-10-28","kPrev":2856.9,"lat":36.148075,"lon":128.102332},{"id":"KB-GC-0033","addr":"신음동 시청로(예시) 인근","type":"지상식","dia":150,"pipe":"A2-3","measured":false,"estQ":2200,"lat":36.149839,"lon":128.1138},{"id":"KB-GC-0034","addr":"대신동 1번 세로(예시) 인근","type":"지하식","dia":100,"pipe":"C1-1","measured":true,"ps":0.47,"pr":0.29,"qf":720,"date":"2026-10-12","kPrev":1310.8,"lat":36.134537,"lon":128.100508},{"id":"KB-GC-0035","addr":"대신동 중앙로(예시) 인근","type":"지하식","dia":150,"pipe":"A1-2","measured":true,"ps":0.53,"pr":0.26,"qf":2520,"date":"2026-11-09","kPrev":4662.4,"lat":36.139999,"lon":128.116069},{"id":"KB-GC-0036","addr":"남산동 2번 가로(예시) 인근","type":"지하식","dia":100,"pipe":"B2-2","measured":false,"estQ":1800,"lat":36.135369,"lon":128.117649},{"id":"KB-GC-0037","addr":"교동 1번 세로(예시) 인근","type":"지상식","dia":100,"pipe":"C1-2","measured":true,"ps":0.32,"pr":0.21,"qf":1290,"date":"2026-10-28","kPrev":2706.7,"lat":36.142793,"lon":128.100218},{"id":"KB-GC-0038","addr":"대신동 중앙로(예시) 인근","type":"지상식","dia":150,"pipe":"A1-2","measured":true,"ps":0.33,"pr":0.11,"qf":3030,"date":"2026-10-28","kPrev":8618.7,"lat":36.139963,"lon":128.112198},{"id":"KB-GC-0039","addr":"성내동 3번 가로(예시) 인근","type":"지하식","dia":100,"pipe":"B3-3","measured":false,"estQ":2700,"lat":36.143978,"lon":128.128628},{"id":"KB-GC-0040","addr":"신음동 역앞로(예시) 인근","type":"지상식","dia":150,"pipe":"A3-1","measured":true,"ps":0.33,"pr":0.18,"qf":3490,"date":"2026-10-14","kPrev":8064.7,"lat":36.132203,"lon":128.099173},{"id":"KB-GC-0041","addr":"신음동 2번 가로(예시) 인근","type":"지상식","dia":100,"pipe":"B2-1","measured":false,"estQ":1500,"lat":36.135794,"lon":128.099607}],"roads":[{"cls":1,"pts":[[36.139257,128.09469],[36.139438,128.103589],[36.13989,128.1136],[36.139619,128.123611],[36.140252,128.13251]]},{"cls":1,"pts":[[36.128495,128.112933],[36.134374,128.113266],[36.13989,128.113711],[36.145226,128.114045],[36.150652,128.1136]]},{"cls":1,"pts":[[36.131208,128.096915],[36.135097,128.105814],[36.13989,128.113711],[36.144503,128.120497],[36.147758,128.129173]]},{"cls":2,"pts":[[36.131814,128.095802],[36.131525,128.106926],[36.131534,128.120274],[36.131634,128.131398]]},{"cls":2,"pts":[[36.135531,128.095802],[36.135721,128.106926],[36.135161,128.120274],[36.13526,128.131398]]},{"cls":2,"pts":[[36.144042,128.095802],[36.14406,128.106926],[36.143553,128.120274],[36.144014,128.131398]]},{"cls":2,"pts":[[36.147876,128.095802],[36.148111,128.106926],[36.147976,128.120274],[36.147578,128.131398]]},{"cls":2,"pts":[[36.129852,128.100363],[36.137087,128.100408],[36.143417,128.100152],[36.149748,128.100441]]},{"cls":2,"pts":[[36.129852,128.106659],[36.137087,128.106537],[36.143417,128.106292],[36.149748,128.106837]]},{"cls":2,"pts":[[36.129852,128.120608],[36.137087,128.120141],[36.143417,128.120029],[36.149748,128.120029]]},{"cls":2,"pts":[[36.129852,128.126537],[36.137087,128.127126],[36.143417,128.126959],[36.149748,128.126982]]}],"river":{"pts":[[36.136816,128.093578],[36.136363,128.101364],[36.137539,128.108038],[36.138353,128.114712],[36.137087,128.121386],[36.136002,128.128061],[36.136363,128.133622]],"w":70},"blocks":[[[36.129879,128.094123],[36.129879,128.095246],[36.130449,128.095246],[36.130449,128.094123]],[[36.135947,128.094234],[36.135947,128.09518],[36.137078,128.09518],[36.137078,128.094234]],[[36.144774,128.094245],[36.144774,128.095469],[36.145805,128.095469],[36.145805,128.094245]],[[36.147686,128.094345],[36.147686,128.095202],[36.148518,128.095202],[36.148518,128.094345]],[[36.132999,128.098606],[36.132999,128.100118],[36.133714,128.100118],[36.133714,128.098606]],[[36.141627,128.098806],[36.141627,128.099651],[36.14264,128.099651],[36.14264,128.098806]],[[36.147885,128.098361],[36.147885,128.099596],[36.148545,128.099596],[36.148545,128.098361]],[[36.129906,128.102777],[36.129906,128.104557],[36.130973,128.104557],[36.130973,128.102777]],[[36.132854,128.102777],[36.132854,128.103689],[36.133668,128.103689],[36.133668,128.102777]],[[36.135794,128.102844],[36.135794,128.104112],[36.136834,128.104112],[36.136834,128.102844]],[[36.141627,128.103022],[36.141627,128.103856],[36.142341,128.103856],[36.142341,128.103022]],[[36.144656,128.103122],[36.144656,128.104779],[36.145742,128.104779],[36.145742,128.103122]],[[36.132665,128.107693],[36.132665,128.109073],[36.133261,128.109073],[36.133261,128.107693]],[[36.138787,128.107248],[36.138787,128.108261],[36.139438,128.108261],[36.139438,128.107248]],[[36.144837,128.107215],[36.144837,128.108761],[36.145398,128.108761],[36.145398,128.107215]],[[36.147858,128.107393],[36.147858,128.108628],[36.149034,128.108628],[36.149034,128.107393]],[[36.129725,128.111665],[36.129725,128.112599],[36.130503,128.112599],[36.130503,128.111665]],[[36.132782,128.111865],[36.132782,128.112844],[36.133903,128.112844],[36.133903,128.111865]],[[36.135993,128.111931],[36.135993,128.113155],[36.136626,128.113155],[36.136626,128.111931]],[[36.13866,128.112109],[36.13866,128.113923],[36.139375,128.113923],[36.139375,128.112109]],[[36.141618,128.111676],[36.141618,128.112655],[36.142613,128.112655],[36.142613,128.111676]],[[36.132936,128.116247],[36.132936,128.11736],[36.133478,128.11736],[36.133478,128.116247]],[[36.135694,128.116603],[36.135694,128.117527],[36.136255,128.117527],[36.136255,128.116603]],[[36.141925,128.116203],[36.141925,128.118016],[36.142622,128.118016],[36.142622,128.116203]],[[36.147885,128.116581],[36.147885,128.117593],[36.148618,128.117593],[36.148618,128.116581]],[[36.129698,128.120586],[36.129698,128.121909],[36.130802,128.121909],[36.130802,128.120586]],[[36.132773,128.120841],[36.132773,128.122098],[36.133506,128.122098],[36.133506,128.120841]],[[36.138769,128.120764],[36.138769,128.122132],[36.139529,128.122132],[36.139529,128.120764]],[[36.141943,128.120864],[36.141943,128.122666],[36.143056,128.122666],[36.143056,128.120864]],[[36.129834,128.125191],[36.129834,128.126792],[36.130919,128.126792],[36.130919,128.125191]],[[36.132882,128.12518],[36.132882,128.126036],[36.133478,128.126036],[36.133478,128.12518]],[[36.135739,128.125213],[36.135739,128.126837],[36.136617,128.126837],[36.136617,128.125213]],[[36.147921,128.125491],[36.147921,128.126303],[36.148826,128.126303],[36.148826,128.125491]],[[36.129834,128.129774],[36.129834,128.130686],[36.130385,128.130686],[36.130385,128.129774]],[[36.13271,128.129807],[36.13271,128.130586],[36.133316,128.130586],[36.133316,128.129807]],[[36.135984,128.129929],[36.135984,128.131787],[36.136608,128.131787],[36.136608,128.129929]],[[36.141654,128.12994],[36.141654,128.131798],[36.142604,128.131798],[36.142604,128.12994]],[[36.147686,128.129985],[36.147686,128.131865],[36.148708,128.131865],[36.148708,128.129985]]],"stations":[{"name":"김천소방서(예시)","kind":"소방서","pos":[36.141247,128.110708]},{"name":"○○119안전센터(예시)","kind":"119안전센터","pos":[36.134012,128.122721]}],"sources":[{"name":"소화수조 A(예시)","kind":"소화수조","pos":[36.142784,128.103033]},{"name":"소화수조 B(예시)","kind":"소화수조","pos":[36.145588,128.118939]},{"name":"하천 취수점(예시)","kind":"하천 취수","pos":[36.138082,128.114935]}],"center":[36.1398,128.1136]};
+</script>
+<script>
+(function(){
+"use strict";
+/* ───────── 기준값 (결과보고서 4장) ───────── */
+const P_MIN=0.14, EXP=0.54, CAP={150:3,100:2}, RADIUS=200;
+const CHECKS=["외관 손상","개폐 불량","부속품 분실","장애물 있음","표지 불량","누수·배수 불량"];
+const BASES={
+  osm:{name:"일반 지도",url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png",att:"© OpenStreetMap contributors",max:19},
+  sat:{name:"위성 사진",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",att:"Imagery © Esri",max:19},
+  vw:{name:"브이월드 일반",url:"https://api.vworld.kr/req/wmts/1.0.0/{key}/Base/{z}/{y}/{x}.png",att:"© VWorld(국토교통부)",max:18,key:true},
+  vws:{name:"브이월드 위성",url:"https://api.vworld.kr/req/wmts/1.0.0/{key}/Satellite/{z}/{y}/{x}.jpeg",att:"© VWorld(국토교통부)",max:18,key:true},
+  schem:{name:"도식 (오프라인)",att:"도식 배경 · 실제 지도 아님",max:19}
+};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
+
+/* ───────── 좌표·거리 ───────── */
+const C0=SAMPLE.center, KLAT=110574, KLON=111320*Math.cos(C0[0]*Math.PI/180);
+const dist=(a,b)=>Math.hypot((a.lon-b.lon)*KLON,(a.lat-b.lat)*KLAT);
+function ll2w(lat,lon){const s=Math.sin(lat*Math.PI/180);return [(lon+180)/360,0.5-Math.log((1+s)/(1-s))/(4*Math.PI)]}
+function w2ll(x,y){const n=Math.PI-2*Math.PI*y;return {lat:180/Math.PI*Math.atan(0.5*(Math.exp(n)-Math.exp(-n))),lon:x*360-180}}
+
+/* ───────── 성능 계산 ───────── */
+const gradeOf=q=>q>=3000?"1":q>=2000?"2":q>=1000?"3":"4";
+function calc(ps,pr,qf){
+  if(![ps,pr,qf].every(Number.isFinite)||qf<=0||ps<=0||pr<0) return null;
+  if(ps<=P_MIN) return {q:0,g:"X"};
+  if(pr>=ps) return null;
+  const q=qf*Math.pow((ps-P_MIN)/(ps-pr),EXP);
+  return {q,g:gradeOf(q)};
+}
+function perf(h){
+  if(h.measured){const c=calc(h.ps,h.pr,h.qf);return c?{q:c.q,g:c.g,est:false}:{q:0,g:"X",est:false}}
+  const q=Number.isFinite(h.estQ)?h.estQ:0; return {q,g:gradeOf(q),est:true};
+}
+function kInfo(h){
+  if(!h.measured||!h.kPrev||!h.pr) return null;
+  const k=h.qf/Math.sqrt(h.pr), d=(k-h.kPrev)/h.kPrev*100;
+  return {k,d,lvl:Math.abs(d)>=30?"bad":Math.abs(d)>=15?"warn":"ok"};
+}
+const gname=g=>g==="X"?"등급 외":g+"등급";
+const gcls=(g,est)=>est?"gde":(g==="X"?"gdx":"gd"+g);
+const gcol=g=>({"1":"var(--g1)","2":"var(--g2)","3":"var(--g3)","4":"var(--g4ink)","X":"var(--ring)"}[g]);
+const fmtQ=q=>Math.round(q).toLocaleString("ko-KR");
+
+/* ───────── 상태 ───────── */
+const DEMO_S=[
+ {id:"d1",hydrantId:"KB-GC-0002",date:"2026-11-09",who:"조사자 A(예시)",issues:[],memo:"월 정기 점검 이상 없음",ts:1762650000000,demo:true},
+ {id:"d2",hydrantId:"KB-GC-0003",date:"2026-11-10",who:"조사자 B(예시)",issues:["장애물 있음","표지 불량"],memo:"불법 주차 차량으로 접근 곤란, 표지 퇴색",ts:1762736400000,demo:true},
+ {id:"d3",hydrantId:"KB-GC-0006",date:"2026-11-12",who:"조사자 A(예시)",issues:["누수·배수 불량"],memo:"정압 낮음. 밸브 개도 확인 필요",ts:1762909200000,demo:true}];
+let H=[], S=ls.get("gc_surveys",null)||DEMO_S.slice();
+let custom=false;
+const L={roads:SAMPLE.roads,river:SAMPLE.river,blocks:SAMPLE.blocks,stations:SAMPLE.stations,sources:SAMPLE.sources};
+let selId=null, fire=null, fireMode=false, moveId=null, me=null;
+const filt={"1":true,"2":true,"3":true,"4":true,"X":true,est:true};
+let base=ls.get("gc_base","osm"), vkey=ls.get("gc_vkey","");
+let view={cx:0.5,cy:0.5,z:14}, W=360, Hh=500;
+(function loadH(){
+  const o=ls.get("gc_h",null);
+  if(Array.isArray(o)&&o.length){H=o;custom=true}else H=JSON.parse(JSON.stringify(SAMPLE.hydrants));
+  $("#dataTag").textContent=custom?"사용자 자료":"예시 자료";
+  $("#dataTag").className="tag"+(custom?"":" demo");
+})();
+const saveH=()=>{if(!ls.set("gc_h",H))toast("저장 공간이 부족합니다")};
+
+/* ───────── 지도 엔진 ───────── */
+const svg=$("#map"), tilesEl=$("#tiles");
+const kk=()=>256*Math.pow(2,view.z);
+function ll2s(lat,lon){const [x,y]=ll2w(lat,lon),k=kk();return [(x-view.cx)*k+W/2,(y-view.cy)*k+Hh/2]}
+function s2ll(px,py){const k=kk();return w2ll(view.cx+(px-W/2)/k,view.cy+(py-Hh/2)/k)}
+const mpp=lat=>40075016.686*Math.cos(lat*Math.PI/180)/kk();
+function size(){const r=$("#mapwrap").getBoundingClientRect();W=r.width||W;Hh=r.height||Hh;svg.setAttribute("viewBox",`0 0 ${W} ${Hh}`)}
+function setZ(z){view.z=Math.max(10,Math.min(BASES[base].max+1,z))}
+
+/* 타일 */
+const tileMap=new Map();
+function tileURL(z,x,y){
+  const b=BASES[base]; if(!b.url) return null;
+  if(b.key&&!vkey) return null;
+  return b.url.replace("{z}",z).replace("{x}",x).replace("{y}",y).replace("{key}",encodeURIComponent(vkey));
+}
+let tileKey="";
+function drawTiles(){
+  if(!BASES[base].url||(BASES[base].key&&!vkey)){tilesEl.innerHTML="";tileMap.clear();tileKey="";return}
+  const z=Math.max(3,Math.min(BASES[base].max,Math.round(view.z))), n=Math.pow(2,z), sc=Math.pow(2,view.z-z);
+  const cxp=view.cx*256*n, cyp=view.cy*256*n;
+  const x0=Math.floor((cxp-W/2/sc)/256), x1=Math.floor((cxp+W/2/sc)/256);
+  const y0=Math.max(0,Math.floor((cyp-Hh/2/sc)/256)), y1=Math.min(n-1,Math.floor((cyp+Hh/2/sc)/256));
+  const want=new Set();
+  for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++){
+    const xm=((x%n)+n)%n, key=base+"/"+z+"/"+xm+"/"+y+"/"+x; want.add(key);
+    let im=tileMap.get(key);
+    if(!im){const u=tileURL(z,xm,y);if(!u)continue;im=new Image();im.decoding="async";im.alt="";im.draggable=false;im.src=u;im.onerror=()=>{im.style.visibility="hidden";noteTiles(false)};im.onload=()=>noteTiles(true);tilesEl.appendChild(im);tileMap.set(key,im)}
+    im.style.transform=`translate(${((x*256-cxp)*sc+W/2).toFixed(2)}px,${((y*256-cyp)*sc+Hh/2).toFixed(2)}px) scale(${sc.toFixed(5)})`;
+  }
+  tileMap.forEach((im,key)=>{if(!want.has(key)){im.remove();tileMap.delete(key)}});
+}
+let tileOK=0,tileBad=0;
+const inFrame=(()=>{try{return window.self!==window.top}catch(e){return true}})();
+function noteTiles(ok){ok?tileOK++:tileBad++; if(tileBad>=4&&tileOK===0&&!noteTiles.warned){noteTiles.warned=1;toast(inFrame?"미리보기 화면에서는 지도·GPS가 막혀 있습니다. 파일을 크롬 등 브라우저로 여세요":"지도 이미지를 불러오지 못했습니다. 인터넷 연결을 확인하거나 ‘도식’ 배경을 선택하세요")}}
+
+/* 도식 배경 */
+function schemSVG(){
+  const P=pts=>pts.map((p,i)=>{const [x,y]=ll2s(p[0],p[1]);return (i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)}).join("");
+  let o=`<rect width="${W}" height="${Hh}" fill="var(--land)"/>`;
+  L.blocks.forEach(b=>o+=`<path d="${P(b)}Z" fill="var(--block)"/>`);
+  const rw=L.river.w/mpp(C0[0]);
+  o+=`<path d="${P(L.river.pts)}" fill="none" stroke="var(--river)" stroke-width="${rw.toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  [1,2].forEach(c=>{
+    L.roads.filter(r=>r.cls===c).forEach(r=>o+=`<path d="${P(r.pts)}" fill="none" stroke="var(--roadcase)" stroke-width="${c===1?9:6}" stroke-linejoin="round"/>`);
+    L.roads.filter(r=>r.cls===c).forEach(r=>o+=`<path d="${P(r.pts)}" fill="none" stroke="${c===1?"var(--road1)":"var(--road2)"}" stroke-width="${c===1?6.5:4}" stroke-linejoin="round"/>`);
+  });
+  return o;
+}
+
+/* 마커 */
+const withTiles=()=>base!=="schem";
+const lblStroke=()=>withTiles()?"#ffffff":"var(--land)";
+function markerSVG(h,x,y,sel,inr){
+  const p=perf(h), r=sel?15:12, col=gcol(p.g), txt=p.g==="X"?"외":p.g;
+  let fill,stroke,tc,dash="";
+  if(p.est){fill="var(--surface)";stroke=col;tc=col;dash=' stroke-dasharray="3 2.5"'}
+  else if(p.g==="4"){fill="var(--g4)";stroke="var(--g4ink)";tc="var(--g4ink)"}
+  else if(p.g==="X"){fill="var(--gx)";stroke="var(--ring)";tc="var(--gxink)"}
+  else{fill=col;stroke="#ffffff";tc=p.g==="3"?"#241c00":"#fff"}
+  let o=`<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">`;
+  if(sel) o+=`<circle r="${r+6}" fill="none" stroke="var(--accent)" stroke-width="3"/>`;
+  else if(inr) o+=`<circle r="${r+4}" fill="none" stroke="var(--accent)" stroke-width="2"/>`;
+  o+=`<circle r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${p.est||p.g==="4"||p.g==="X"?2.5:2}"${dash}/>`;
+  o+=`<text y="${sel?6:5}" text-anchor="middle" font-size="${sel?16:13}" font-weight="700" fill="${tc}" font-family="var(--font)">${txt}</text>`;
+  if(view.z>=15.6) o+=`<text y="${r+14}" text-anchor="middle" font-size="10.5" fill="${withTiles()?"#111":"var(--ink)"}" font-family="var(--mono)" stroke="${lblStroke()}" stroke-width="3" paint-order="stroke">${esc(String(h.id).slice(-4))}</text>`;
+  return o+`</g>`;
+}
+function iconSVG(kind,x,y,label){
+  const lab=(dy,t,w)=>view.z>=14.6?`<text y="${dy}" text-anchor="middle" font-size="10.5" fill="${withTiles()?"#111":"var(--ink)"}" stroke="${lblStroke()}" stroke-width="3" paint-order="stroke" font-family="var(--font)" font-weight="${w}">${esc(t)}</text>`:"";
+  if(kind==="station") return `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><rect x="-11" y="-11" width="22" height="22" rx="4" fill="#1b2322" stroke="#fff" stroke-width="1.5"/><path d="M-5 5V-1l5-5 5 5v6zM-1.5 5V1.5h3V5" fill="#fff"/>${lab(25,label,700)}</g>`;
+  return `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><path d="M0 -12 L9 2 A9 9 0 1 1 -9 2 Z" fill="#7fb4dc" stroke="#1b2322" stroke-width="1.5"/>${lab(26,label,500)}</g>`;
+}
+const inRange=h=>fire&&dist(h,fire)<=RADIUS;
+const visible=h=>{const p=perf(h);return p.est?filt.est&&filt[p.g]:filt[p.g]};
+let raf=0;
+const draw=()=>{if(raf)return;raf=requestAnimationFrame(()=>{raf=0;drawNow()})};
+function drawNow(){
+  drawTiles();
+  let o=base==="schem"?schemSVG():"";
+  L.sources.forEach(s=>{const [x,y]=ll2s(s.pos[0],s.pos[1]);if(!custom||true)o+=iconSVG("src",x,y,s.name)});
+  L.stations.forEach(s=>{const [x,y]=ll2s(s.pos[0],s.pos[1]);o+=iconSVG("station",x,y,s.name)});
+  if(fire){
+    const [fx,fy]=ll2s(fire.lat,fire.lon), rr=RADIUS/mpp(fire.lat);
+    o+=`<circle cx="${fx}" cy="${fy}" r="${rr}" fill="color-mix(in srgb,var(--accent) 14%,transparent)" stroke="var(--accent)" stroke-width="2.5" stroke-dasharray="7 5"/>`;
+  }
+  H.filter(visible).sort((a,b)=>(a.id===selId)-(b.id===selId)).forEach(h=>{const [x,y]=ll2s(h.lat,h.lon);if(x>-30&&x<W+30&&y>-30&&y<Hh+30)o+=markerSVG(h,x,y,h.id===selId,inRange(h))});
+  if(fire){const [fx,fy]=ll2s(fire.lat,fire.lon);o+=`<g transform="translate(${fx} ${fy})"><path d="M0 0 C-14 -16 -13 -30 0 -40 C13 -30 14 -16 0 0Z" fill="var(--accent)" stroke="#fff" stroke-width="2"/><circle cy="-24" r="5" fill="#fff"/></g>`}
+  if(me){const [mx,my]=ll2s(me.lat,me.lon),r=me.acc?Math.min(me.acc/mpp(me.lat),200):0;
+    if(r>12)o+=`<circle cx="${mx}" cy="${my}" r="${r}" fill="rgba(30,110,230,.12)" stroke="rgba(30,110,230,.5)"/>`;
+    o+=`<circle cx="${mx}" cy="${my}" r="8" fill="#1e6ee6" stroke="#fff" stroke-width="3"/>`}
+  svg.innerHTML=o;
+  scalebar();
+}
+function scalebar(){
+  const lat=s2ll(W/2,Hh/2).lat, target=90*mpp(lat), P=[5,10,20,50,100,200,500,1000,2000,5000,10000];
+  let m=P[0]; for(const p of P){if(p<=target)m=p}
+  $("#scalebar").innerHTML=`<i style="width:${(m/mpp(lat)).toFixed(0)}px"></i>${m>=1000?m/1000+" km":m+" m"}`;
+}
+function fit(){
+  size(); if(!H.length){const [x,y]=ll2w(C0[0],C0[1]);view.cx=x;view.cy=y;setZ(14);draw();return}
+  const la=H.map(h=>h.lat),lo=H.map(h=>h.lon);
+  const [ax,ay]=ll2w(Math.max(...la),Math.min(...lo)),[bx,by]=ll2w(Math.min(...la),Math.max(...lo));
+  const top=Math.min(110,Hh*.18),bot=Math.min(Hh*.1,50);
+  const fz=Math.log2(Math.min(W/(Math.max(bx-ax,1e-9)*256*1.12),(Hh-top-bot)/(Math.max(by-ay,1e-9)*256*1.12)));
+  setZ(Math.min(fz,17.5)); view.cx=(ax+bx)/2; view.cy=(ay+by)/2+(top-bot)/2/kk()*-1; draw();
+}
+function zoomAt(f,px,py){
+  const before=s2ll(px,py); const oz=view.z; setZ(view.z+Math.log2(f)); if(oz===view.z)return;
+  const [wx,wy]=ll2w(before.lat,before.lon),k=kk(); view.cx=wx-(px-W/2)/k; view.cy=wy-(py-Hh/2)/k; draw();
+}
+function flyTo(lat,lon,z){const [x,y]=ll2w(lat,lon);view.cx=x;view.cy=y+ (Hh*0.2)/kk();if(z)setZ(Math.max(view.z,z));draw()}
+
+/* 제스처 */
+const ptrs=new Map(); let gest=null;
+svg.addEventListener("pointerdown",e=>{
+  svg.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  gest={moved:0,sx:e.clientX,sy:e.clientY,cx:view.cx,cy:view.cy,z:view.z,d:0,mx:0,my:0};
+  if(ptrs.size===2){const [a,b]=[...ptrs.values()];gest.d=Math.hypot(a.x-b.x,a.y-b.y)||1;gest.moved=99}
+});
+svg.addEventListener("pointermove",e=>{
+  if(!ptrs.has(e.pointerId)||!gest)return;
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size===2){
+    const [a,b]=[...ptrs.values()],d=Math.hypot(a.x-b.x,a.y-b.y)||1;
+    setZ(gest.z+Math.log2(d/gest.d)); draw();
+  }else if(ptrs.size===1){
+    const dx=e.clientX-gest.sx,dy=e.clientY-gest.sy; gest.moved=Math.max(gest.moved,Math.hypot(dx,dy));
+    if(gest.moved>6){const k=256*Math.pow(2,view.z);view.cx=gest.cx-dx/k;view.cy=gest.cy-dy/k;draw()}
+  }
+});
+function endPtr(e){
+  const was=ptrs.size; ptrs.delete(e.pointerId);
+  if(was===1&&gest&&gest.moved<=6&&e.type==="pointerup")tap(e.clientX,e.clientY);
+  if(ptrs.size===1){const [p]=[...ptrs.values()];gest={moved:99,sx:p.x,sy:p.y,cx:view.cx,cy:view.cy,z:view.z,d:0,mx:0,my:0}}
+  if(ptrs.size===0)gest=null;
+}
+svg.addEventListener("pointerup",endPtr);svg.addEventListener("pointercancel",endPtr);
+svg.addEventListener("wheel",e=>{e.preventDefault();const r=svg.getBoundingClientRect();zoomAt(e.deltaY<0?1.25:0.8,e.clientX-r.left,e.clientY-r.top)},{passive:false});
+function tap(cx,cy){
+  const r=svg.getBoundingClientRect(),px=cx-r.left,py=cy-r.top;
+  if(moveId){const p=s2ll(px,py),h=H.find(v=>v.id===moveId);if(h){h.lat=+p.lat.toFixed(6);h.lon=+p.lon.toFixed(6);custom=true;markCustom();saveH();toast("위치를 옮겼습니다")}const id=moveId;moveId=null;updateFirebar();select(id);return}
+  if(fireMode){const p=s2ll(px,py);setFire(p.lat,p.lon);return}
+  let best=null,bd=26;
+  H.filter(visible).forEach(h=>{const [x,y]=ll2s(h.lat,h.lon),d=Math.hypot(x-px,y-py);if(d<bd){bd=d;best=h}});
+  if(best)select(best.id);else closeSheet();
+}
+function markCustom(){$("#dataTag").textContent="사용자 자료";$("#dataTag").className="tag"}
+$("#zin").onclick=()=>zoomAt(1.5,W/2,Hh/2);$("#zout").onclick=()=>zoomAt(1/1.5,W/2,Hh/2);$("#zfit").onclick=fit;
+$("#zbase").onclick=()=>{const k=Object.keys(BASES);let i=k.indexOf(base);do{i=(i+1)%k.length}while(BASES[k[i]].key&&!vkey);setBase(k[i])};
+function setBase(b){base=b;ls.set("gc_base",b);tilesEl.innerHTML="";tileMap.clear();tileOK=0;tileBad=0;noteTiles.warned=0;$("#mapnote").textContent=BASES[b].name+" · "+BASES[b].att;if(view.z>BASES[b].max+1)setZ(BASES[b].max);draw()}
+$("#zgps").onclick=()=>{
+  if(!navigator.geolocation){toast("이 브라우저는 위치 기능을 지원하지 않습니다");return}
+  toast("위치 확인 중…");
+  navigator.geolocation.getCurrentPosition(p=>{me={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy};flyTo(me.lat,me.lon,17);toast("내 위치 ±"+Math.round(p.coords.accuracy)+" m")},
+   err=>toast(err.code===1?"위치 권한이 거부되었습니다 (브라우저 설정 확인)":"위치를 확인할 수 없습니다. HTTPS 주소에서 열어야 동작합니다"),{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
+};
+new ResizeObserver(()=>{const a=W,b=Hh;size();if(Math.abs(a-W)>2||Math.abs(b-Hh)>2)draw()}).observe($("#mapwrap"));
+
+/* ───────── 칩·화재 지점 ───────── */
+function buildChips(){
+  const defs=[["1","1등급"],["2","2등급"],["3","3등급"],["4","4등급"],["X","등급 외"],["est","추정 포함"]];
+  let o=`<button class="chip ${fireMode?"act":""}" id="chipFire" aria-pressed="${fireMode}"><span aria-hidden="true">◎</span>화재 지점</button>`;
+  defs.forEach(([k,t])=>{const c=k==="est"?"gde":"gd"+(k==="X"?"x":k);o+=`<button class="chip" data-f="${k}" aria-pressed="${filt[k]}"><span class="dot ${c}">${k==="est"?"":k==="X"?"외":k}</span>${t}</button>`});
+  $("#chips").innerHTML=o;
+  $("#chipFire").onclick=()=>{fireMode=!fireMode;moveId=null;if(fireMode)closeSheet();updateFirebar();buildChips()};
+  $("#chips").querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{filt[b.dataset.f]=!filt[b.dataset.f];buildChips();draw();renderList()});
+}
+function updateFirebar(){
+  $("#firebar").classList.toggle("on",fireMode||!!fire||!!moveId);
+  $("#firetxt").textContent=moveId?"새 위치를 지도에서 눌러 주세요":fireMode&&!fire?"지도를 눌러 화재 지점을 지정하세요":fireMode?"다른 곳을 누르면 지점이 바뀝니다":"화재 지점 기준 "+RADIUS+" m 조회 중";
+}
+$("#fireoff").onclick=()=>{fire=null;fireMode=false;moveId=null;updateFirebar();buildChips();closeSheet();draw()};
+function setFire(lat,lon){fire={lat,lon};updateFirebar();draw();showFire()}
+
+/* ───────── 시트 ───────── */
+function closeSheet(){selId=null;$("#sheet").hidden=true;draw()}
+function select(id){
+  selId=id;fireMode=false;buildChips();updateFirebar();
+  const h=H.find(v=>v.id===id);if(!h)return;
+  const p=perf(h),ki=kInfo(h);
+  const recs=S.filter(r=>r.hydrantId===id).sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,3);
+  let o=`<div class="sh-head"><div class="badge ${gcls(p.g,p.est)}" style="${p.est?"color:"+gcol(p.g):""}">${p.g==="X"?"외":p.g}</div>
+   <div class="sh-title"><div class="id">${esc(h.id)}</div><div class="addr">${esc(h.addr)}</div>
+   <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap"><span class="pill ${p.est?"mute":"ok"}">${p.est?"추정 등급":"실측 등급"}</span><span class="pill mute">${gname(p.g)}</span></div></div>
+   <span class="spacer"></span><button class="iconbtn" id="shClose" aria-label="닫기">✕</button></div>`;
+  o+=`<div class="kv"><div><b>가용유량 Q<sub>R</sub></b><span class="num">${fmtQ(p.q)}</span> <small>L/min${p.est?" (추정)":""}</small></div>
+   <div><b>유형 / 관경</b><span>${esc(h.type||"-")} · ${esc(h.dia||"-")}</span> <small>mm</small></div>`;
+  if(h.measured){
+    o+=`<div><b>정압 P<sub>s</sub></b><span class="num">${h.ps.toFixed(2)}</span> <small>MPa</small></div>
+    <div><b>잔류압 P<sub>r</sub></b><span class="num">${h.pr.toFixed(2)}</span> <small>MPa</small></div>
+    <div><b>시험유량 Q<sub>F</sub></b><span class="num">${fmtQ(h.qf)}</span> <small>L/min</small></div>
+    <div><b>시험일</b><span class="num" style="font-size:14px">${esc(h.date||"-")}</span></div>`;
+    if(ki)o+=`<div><b>K 변화율 ΔK</b><span class="num">${ki.d>0?"+":""}${ki.d.toFixed(0)}%</span> <small><span class="pill ${ki.lvl}">${ki.lvl==="bad"?"점검 필요":ki.lvl==="warn"?"주의":"정상"}</span></small></div>`;
+  }else o+=`<div style="grid-column:1/-1"><b>성능시험 기록 없음</b><small>관경·위치 기반 추정값입니다. 시험 후 실측 등급으로 바뀝니다.</small></div>`;
+  o+=`</div><div class="note num" style="margin-bottom:10px">위치 ${h.lat.toFixed(5)}, ${h.lon.toFixed(5)}${h.pipe?" · 관로 "+esc(h.pipe):""}</div>
+   <div class="btns"><button class="btn pri" id="shSurvey">조사 입력</button><button class="btn" id="shFire">여기를 화재 지점으로</button><button class="btn" id="shMove">위치 수정</button></div>`;
+  if(recs.length)o+=`<h3>최근 현장 조사</h3>`+recs.map(recHTML).join("");
+  $("#sheetBody").innerHTML=o;$("#sheet").hidden=false;
+  $("#shClose").onclick=closeSheet;
+  $("#shSurvey").onclick=()=>openSurvey(id);
+  $("#shFire").onclick=()=>{fire={lat:h.lat,lon:h.lon};selId=null;updateFirebar();draw();showFire()};
+  $("#shMove").onclick=()=>{moveId=id;$("#sheet").hidden=true;updateFirebar();draw()};
+  draw();
+}
+function zoneOf(){
+  const list=H.filter(inRange).map(h=>({h,p:perf(h),d:dist(h,fire)})).sort((a,b)=>a.d-b.d);
+  const groups={};list.forEach(r=>{(groups[r.h.pipe||("_"+r.h.id)]??=[]).push(r)});
+  let total=0;const used=new Set();
+  Object.values(groups).forEach(g=>{g.sort((a,b)=>b.p.q-a.p.q);const cap=CAP[g[0].h.dia]||2;g.slice(0,cap).forEach(r=>{total+=r.p.q;used.add(r.h.id)})});
+  return {list,total,used};
+}
+function showFire(){
+  if(!fire)return;const z=zoneOf();
+  let o=`<div class="sh-head"><div class="badge" style="background:var(--accent);color:var(--accent-ink);font-size:20px">${z.list.length}</div>
+   <div class="sh-title"><div class="id">화재 지점 반경 ${RADIUS} m</div><div class="addr">소화전 ${z.list.length}개소 · 가까운 순</div></div><span class="spacer"></span><button class="iconbtn" id="shClose" aria-label="닫기">✕</button></div>`;
+  o+=`<div class="kv"><div style="grid-column:1/-1"><b>구역 가용유량 Q<sub>구역</sub></b><span class="num">${fmtQ(z.total)}</span> <small>L/min · 같은 관로는 관경별 상한(150 mm 3대, 100 mm 2대)까지만 합산</small></div></div>`;
+  if(!z.list.length)o+=`<div class="empty">반경 안에 소화전이 없습니다. 가까운 소방서·수조를 확인하세요.</div>`;
+  o+=z.list.map(r=>`<button class="row" data-id="${esc(r.h.id)}"><span class="dot ${gcls(r.p.g,r.p.est)}" style="${r.p.est?"color:"+gcol(r.p.g):""}">${r.p.g==="X"?"외":r.p.g}</span>
+    <span class="mid"><span class="t">${esc(r.h.id)}</span><div class="a">${esc(r.h.addr)}</div></span>
+    <span class="r"><b class="num">${Math.round(r.d)} m</b>${fmtQ(r.p.q)} L/min${z.used.has(r.h.id)?"":" · 합산 제외"}</span></button>`).join("");
+  const near=[...L.stations,...L.sources].map(s=>({s,d:dist({lat:s.pos[0],lon:s.pos[1]},fire)})).sort((a,b)=>a.d-b.d).slice(0,3);
+  if(near.length)o+=`<h3>가까운 소방서·대체 수원 (예시 위치)</h3>`+near.map(n=>`<div class="rec"><div class="h"><b>${esc(n.s.name)}</b><span class="pill mute">${esc(n.s.kind)}</span><span class="spacer"></span><span class="num">${Math.round(n.d)} m</span></div></div>`).join("");
+  $("#sheetBody").innerHTML=o;$("#sheet").hidden=false;
+  $("#shClose").onclick=()=>{$("#sheet").hidden=true};
+  $("#sheetBody").querySelectorAll(".row").forEach(b=>b.onclick=()=>{const h=H.find(v=>v.id===b.dataset.id);flyTo(h.lat,h.lon,16.5);select(h.id)});
+}
+
+/* ───────── 목록·기록 ───────── */
+function renderList(){
+  const q=$("#q").value.trim().toLowerCase(),cnt={"1":0,"2":0,"3":0,"4":0,"X":0,e:0};
+  H.forEach(h=>{const p=perf(h);if(p.est)cnt.e++;else cnt[p.g]++});
+  $("#stats").innerHTML=[["1","1등급"],["2","2등급"],["3","3등급"],["4","4등급"],["X","등급 외"],["e","추정"]].map(([k,t])=>`<div class="stat"><b class="num">${cnt[k]}</b>${t}</div>`).join("");
+  const rows=H.filter(visible).filter(h=>!q||String(h.id).toLowerCase().includes(q)||String(h.addr).includes(q)).sort((a,b)=>perf(a).q-perf(b).q);
+  $("#listBody").innerHTML=rows.length?rows.map(h=>{const p=perf(h),ki=kInfo(h);
+    return `<button class="row" data-id="${esc(h.id)}"><span class="dot ${gcls(p.g,p.est)}" style="${p.est?"color:"+gcol(p.g):""}">${p.g==="X"?"외":p.g}</span>
+    <span class="mid"><span class="t">${esc(h.id)}</span><div class="a">${esc(h.addr)}</div></span>
+    <span class="r"><b class="num">${fmtQ(p.q)}</b>${p.est?"추정":esc(h.date||"")}${ki&&ki.lvl!=="ok"?` · <span class="pill ${ki.lvl}">ΔK</span>`:""}</span></button>`}).join(""):`<div class="empty">조건에 맞는 소화전이 없습니다.</div>`;
+  $("#listBody").querySelectorAll(".row").forEach(b=>b.onclick=()=>{go("vMap");requestAnimationFrame(()=>{size();const h=H.find(v=>v.id===b.dataset.id);flyTo(h.lat,h.lon,16.5);select(h.id)})});
+}
+$("#q").addEventListener("input",renderList);
+function recHTML(r){
+  const is=r.issues||[],g=r.g?`<span class="dot ${r.g==="X"?"gdx":"gd"+r.g}">${r.g==="X"?"외":r.g}</span>`:"";
+  return `<div class="rec"><div class="h">${g}<span class="mono">${esc(r.hydrantId||"신규 등록")}</span><span class="pill ${is.length?"warn":"ok"}">${is.length?"이상 "+is.length+"건":"이상 없음"}</span>${r.demo?`<span class="pill mute">예시</span>`:""}<span class="spacer"></span><span class="num note">${esc(r.date||"")}</span></div>
+   <div class="m">${is.length?esc(is.join(", ")):"점검 항목 모두 정상"}${r.q?` · Q<sub>R</sub> ${fmtQ(r.q)} L/min`:""}${r.memo?`<br>${esc(r.memo)}`:""}</div>
+   <div class="m">조사자 ${esc(r.who||"-")}${r.newLoc?` · 신규 위치 ${r.newLoc.lat.toFixed(5)}, ${r.newLoc.lon.toFixed(5)}`:""}</div></div>`;
+}
+function renderRec(){
+  const rows=[...S].sort((a,b)=>(b.ts||0)-(a.ts||0));
+  $("#recBody").innerHTML=rows.length?rows.map(recHTML).join(""):`<div class="empty">아직 조사 기록이 없습니다.<br>현장에서 “+ 조사 입력”으로 첫 기록을 남기세요.</div>`;
+}
+
+/* ───────── CSV ───────── */
+const q=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
+function download(name,text,type){
+  const b=new Blob(["﻿"+text],{type:type||"text/csv;charset=utf-8"}),a=document.createElement("a");
+  a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);
+}
+const HCOLS=["식별번호","주소","유형","관경","관로","위도","경도","정압","잔류압","시험유량","시험일","추정유량","이전K"];
+function hydrantsCSV(){
+  return [HCOLS.map(q).join(","),...H.map(h=>[h.id,h.addr,h.type,h.dia,h.pipe,h.lat,h.lon,h.measured?h.ps:"",h.measured?h.pr:"",h.measured?h.qf:"",h.measured?h.date:"",h.measured?"":h.estQ,h.kPrev||""].map(q).join(","))].join("\r\n");
+}
+function surveysCSV(){
+  const head=["조사일","식별번호","조사자","이상항목","Ps(MPa)","Pr(MPa)","QF(L/min)","QR(L/min)","등급","위도","경도","메모"];
+  return [head.map(q).join(","),...[...S].sort((a,b)=>(a.ts||0)-(b.ts||0)).map(r=>{
+    const h=H.find(v=>v.id===r.hydrantId),p=r.newLoc||(h?{lat:h.lat,lon:h.lon}:null);
+    return [r.date,r.hydrantId||"신규",r.who,(r.issues||[]).join("; "),r.ps,r.pr,r.qf,r.q,r.g,p?p.lat:"",p?p.lon:"",r.memo].map(q).join(",")}).filter(Boolean)].join("\r\n");
+}
+function parseCSV(t){
+  t=t.replace(/^﻿/,"");const rows=[];let row=[],f="",inq=false;
+  for(let i=0;i<t.length;i++){const c=t[i];
+    if(inq){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else inq=false}else f+=c}
+    else if(c==='"')inq=true;else if(c===","){row.push(f);f=""}
+    else if(c==="\n"||c==="\r"){if(c==="\r"&&t[i+1]==="\n")i++;row.push(f);f="";if(row.some(x=>x!==""))rows.push(row);row=[]}
+    else f+=c}
+  row.push(f);if(row.some(x=>x!==""))rows.push(row);return rows;
+}
+function importHydrants(text){
+  const rows=parseCSV(text);if(rows.length<2)throw new Error("자료 행이 없습니다");
+  const hd=rows[0].map(s=>s.trim()),ix=n=>hd.indexOf(n);
+  if(ix("식별번호")<0||ix("위도")<0||ix("경도")<0)throw new Error("‘식별번호·위도·경도’ 열이 필요합니다");
+  const num=v=>{const n=parseFloat(String(v).replace(/,/g,""));return Number.isFinite(n)?n:null};
+  const out=[],bad=[];
+  rows.slice(1).forEach((r,i)=>{
+    const g=n=>ix(n)<0?"":(r[ix(n)]??"").trim(),lat=num(g("위도")),lon=num(g("경도"));
+    if(!g("식별번호")||lat==null||lon==null||lat<30||lat>40||lon<120||lon>135){bad.push(i+2);return}
+    const ps=num(g("정압")),pr=num(g("잔류압")),qf=num(g("시험유량")),meas=ps!=null&&pr!=null&&qf!=null;
+    const h={id:g("식별번호"),addr:g("주소")||"-",type:g("유형")||"",dia:num(g("관경"))||100,pipe:g("관로")||"",lat,lon,measured:meas};
+    if(meas){h.ps=ps;h.pr=pr;h.qf=qf;h.date=g("시험일")}else h.estQ=num(g("추정유량"))||0;
+    const kp=num(g("이전K"));if(kp)h.kPrev=kp;out.push(h);
+  });
+  if(!out.length)throw new Error("읽을 수 있는 행이 없습니다 (위도·경도 확인)");
+  return {out,bad};
+}
+
+/* ───────── 폼 ───────── */
+const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+function openModal(title,body,foot){$("#fTitle").textContent=title;$("#fBody").innerHTML=body;$("#fFoot").innerHTML=foot;$("#form").hidden=false}
+const closeModal=()=>{$("#form").hidden=true};
+$("#fClose").onclick=closeModal;
+function openSurvey(id){
+  const c=s2ll(W/2,Hh/2),who=ls.get("gc_who","");
+  const opts=H.map(h=>`<option value="${esc(h.id)}" ${h.id===id?"selected":""}>${esc(h.id)} · ${esc(h.addr)}</option>`).join("");
+  openModal("현장 조사 입력",`
+   <div class="fsec"><div class="fld"><label for="fH">대상 소화전</label><select id="fH"><option value="">신규 등록 (대장에 없는 시설)</option>${opts}</select></div>
+    <div id="newLoc" ${id?"hidden":""}><div class="grid2"><div class="fld"><label for="fLat">위도</label><input id="fLat" inputmode="decimal" value="${c.lat.toFixed(6)}"></div><div class="fld"><label for="fLon">경도</label><input id="fLon" inputmode="decimal" value="${c.lon.toFixed(6)}"></div></div>
+    <div class="btns" style="margin-bottom:6px"><button class="btn sm" id="fGps" type="button">내 위치로 채우기</button><button class="btn sm" id="fCenter" type="button">지도 중심으로</button></div><div class="note">신규 시설은 조사 기록으로 저장됩니다. 대장에 넣으려면 CSV 양식에 추가해 가져오세요.</div></div></div>
+   <div class="grid2"><div class="fld"><label for="fDate">조사일</label><input id="fDate" type="date" value="${today()}"></div><div class="fld"><label for="fWho">조사자</label><input id="fWho" value="${esc(who)}" placeholder="이름"></div></div>
+   <div class="fsec"><h3>외관·작동 점검 (이상 있는 항목을 선택)</h3><div class="checks">${CHECKS.map((t,i)=>`<label><input type="checkbox" id="ck${i}">${t}</label>`).join("")}</div></div>
+   <div class="fsec"><h3>성능시험 (실시했을 때만 입력)</h3>
+    <div class="grid3"><div class="fld"><label for="fPs">정압 P<sub>s</sub> (MPa)</label><input id="fPs" inputmode="decimal" placeholder="0.35"></div>
+    <div class="fld"><label for="fPr">잔류압 P<sub>r</sub> (MPa)</label><input id="fPr" inputmode="decimal" placeholder="0.22"></div>
+    <div class="fld"><label for="fQf">시험유량 Q<sub>F</sub> (L/min)</label><input id="fQf" inputmode="decimal" placeholder="2800"></div></div>
+    <div class="live" id="live"><span class="dot gde">–</span><div><b id="liveT">값을 입력하면 등급이 계산됩니다</b><div class="note" id="liveS">Q<sub>R</sub> = Q<sub>F</sub>×[(P<sub>s</sub>−0.14)/(P<sub>s</sub>−P<sub>r</sub>)]<sup>0.54</sup></div></div></div></div>
+   <div class="fld"><label for="fMemo">메모</label><textarea id="fMemo" rows="3" placeholder="위치 특이사항, 조치 필요 내용"></textarea></div>`,
+   `<button class="btn" id="fCancel">취소</button><button class="btn pri" id="fSave">저장</button>`);
+  const upd=()=>{
+    const ps=parseFloat($("#fPs").value),pr=parseFloat($("#fPr").value),qf=parseFloat($("#fQf").value),any=["fPs","fPr","fQf"].some(i=>$("#"+i).value.trim()),c=calc(ps,pr,qf),d=$("#live .dot");
+    if(c){d.className="dot "+(c.g==="X"?"gdx":"gd"+c.g);d.textContent=c.g==="X"?"외":c.g;$("#liveT").innerHTML=`${gname(c.g)} · Q<sub>R</sub> ${fmtQ(c.q)} L/min`;$("#liveS").textContent=c.g==="X"?"정압이 0.14 MPa 이하라 등급 외(저압)입니다.":"0.14 MPa 기준 가용유량으로 환산한 값입니다."}
+    else{d.className="dot gde";d.textContent="–";$("#liveT").textContent=any?"세 값을 모두 입력하세요 (P_s > P_r)":"값을 입력하면 등급이 계산됩니다"}
+  };
+  ["fPs","fPr","fQf"].forEach(i=>$("#"+i).addEventListener("input",upd));
+  $("#fH").onchange=()=>{$("#newLoc").hidden=!!$("#fH").value};
+  $("#fCenter").onclick=()=>{const c=s2ll(W/2,Hh/2);$("#fLat").value=c.lat.toFixed(6);$("#fLon").value=c.lon.toFixed(6)};
+  $("#fGps").onclick=()=>{navigator.geolocation?navigator.geolocation.getCurrentPosition(p=>{$("#fLat").value=p.coords.latitude.toFixed(6);$("#fLon").value=p.coords.longitude.toFixed(6);toast("±"+Math.round(p.coords.accuracy)+" m")},()=>toast("위치를 확인할 수 없습니다"),{enableHighAccuracy:true,timeout:15000}):toast("위치 기능이 없습니다")};
+  $("#fCancel").onclick=closeModal;
+  $("#fSave").onclick=()=>{
+    const hid=$("#fH").value,who=$("#fWho").value.trim(),ps=parseFloat($("#fPs").value),pr=parseFloat($("#fPr").value),qf=parseFloat($("#fQf").value),c=calc(ps,pr,qf);
+    const rec={id:"r"+Date.now().toString(36),hydrantId:hid||null,date:$("#fDate").value||today(),who,issues:CHECKS.filter((t,i)=>$("#ck"+i).checked),memo:$("#fMemo").value.trim(),ts:Date.now()};
+    if(c){rec.ps=ps;rec.pr=pr;rec.qf=qf;rec.q=Math.round(c.q);rec.g=c.g}
+    if(!hid){const lat=parseFloat($("#fLat").value),lon=parseFloat($("#fLon").value);if(!Number.isFinite(lat)||!Number.isFinite(lon)){toast("위도·경도를 확인하세요");return}rec.newLoc={lat,lon}}
+    ls.set("gc_who",who);S.push(rec);
+    if(!ls.set("gc_surveys",S)){toast("저장 공간이 부족합니다. CSV로 내보낸 뒤 비워 주세요")}else toast("이 기기에 저장했습니다");
+    closeModal();renderRec();renderList();if(selId)select(selId);
+  };
+}
+$("#btnNew").onclick=()=>openSurvey(selId);
+$("#btnCsv").onclick=()=>{if(!S.length){toast("내보낼 기록이 없습니다");return}download("소방용수_현장조사_"+today()+".csv",surveysCSV())};
+
+/* ───────── 설정 ───────── */
+function openSettings(){
+  const radios=Object.entries(BASES).map(([k,b])=>`<label><input type="radio" name="bs" value="${k}" ${k===base?"checked":""}>${b.name}${b.key?" (인증키 필요)":""}</label>`).join("");
+  openModal("지도·자료 설정",`
+   <div class="fsec"><h3>배경 지도</h3><div class="radios">${radios}</div>
+    <div class="fld" style="margin-top:10px"><label for="vk">브이월드 인증키 (선택)</label><input id="vk" value="${esc(vkey)}" placeholder="발급받은 키 입력" autocomplete="off"></div>
+    <div class="note">일반·위성은 인터넷 연결이 필요합니다. 연결이 안 되면 ‘도식(오프라인)’을 쓰세요.</div></div>
+   <div class="fsec"><h3>소화전 자료</h3>
+    <div class="note" style="margin-bottom:8px">현재 ${H.length}개소 · ${custom?"사용자가 가져오거나 수정한 자료":"시연용 예시 자료"}</div>
+    <div class="btns"><button class="btn" id="sImp">CSV 가져오기</button><button class="btn" id="sTpl">양식 내려받기</button><button class="btn" id="sExp">현재 자료 내보내기</button></div>
+    <div class="note" style="margin-top:8px">양식 열: ${HCOLS.join(", ")}. 정압·잔류압·시험유량이 모두 있으면 실측, 없으면 추정유량으로 추정 등급을 표시합니다. 엑셀에서 편집 후 CSV(UTF-8)로 저장하세요. QGIS에서는 ‘구분된 텍스트 레이어’로 같은 파일을 열 수 있습니다.</div></div>
+   <div class="fsec"><h3>초기화</h3><div class="btns"><button class="btn danger" id="sReset">예시 자료로 되돌리기</button><button class="btn danger" id="sClr">조사 기록 모두 지우기</button></div><div class="note" style="margin-top:6px">가져온 자료와 위치 수정이 지워집니다. 조사 기록은 유지됩니다.</div></div>
+   <div class="fsec"><h3>저장 위치</h3><div class="note">자료·조사 기록은 이 브라우저에만 저장됩니다. 기기를 바꾸거나 브라우저 데이터를 지우면 사라지므로 CSV로 자주 내보내 두세요.</div></div>`,
+   `<button class="btn pri" id="sOk">닫기</button>`);
+  document.querySelectorAll('input[name="bs"]').forEach(r=>r.onchange=()=>{if(BASES[r.value].key&&!$("#vk").value.trim()){toast("브이월드 인증키를 먼저 입력하세요");document.querySelector(`input[name="bs"][value="${base}"]`).checked=true;return}setBase(r.value)});
+  $("#vk").onchange=()=>{vkey=$("#vk").value.trim();ls.set("gc_vkey",vkey);if(BASES[base].key)setBase(base)};
+  $("#sOk").onclick=closeModal;
+  $("#sImp").onclick=()=>$("#fileIn").click();
+  $("#sTpl").onclick=()=>{download("소화전_자료_양식.csv",[HCOLS.map(q).join(","),["KB-GC-0001","김천시 ○○동 ○○로 12","지상식",150,"A-1",36.1398,128.1136,0.35,0.22,3200,"2026-11-01","",""].map(q).join(","),["KB-GC-0002","김천시 ○○동 ○○길 5","지하식",100,"B-2",36.141,128.117,"","","","",1800,""].map(q).join(",")].join("\r\n"))};
+  $("#sExp").onclick=()=>download("소화전_자료_"+today()+".csv",hydrantsCSV());
+  let armed=false;
+  let armed2=false;
+  $("#sClr").onclick=()=>{if(!armed2){armed2=true;$("#sClr").textContent="한 번 더 누르면 지웁니다";return}S=[];ls.set("gc_surveys",S);closeModal();renderRec();renderList();toast("조사 기록을 지웠습니다")};
+  $("#sReset").onclick=()=>{if(!armed){armed=true;$("#sReset").textContent="한 번 더 누르면 되돌립니다";return}
+    ls.del("gc_h");H=JSON.parse(JSON.stringify(SAMPLE.hydrants));custom=false;$("#dataTag").textContent="예시 자료";$("#dataTag").className="tag demo";closeModal();selId=null;$("#sheet").hidden=true;fit();renderList();toast("예시 자료로 되돌렸습니다")};
+}
+$("#btnSet").onclick=openSettings;
+$("#fileIn").onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const fr=new FileReader();
+  fr.onload=()=>{try{const {out,bad}=importHydrants(String(fr.result));H=out;custom=true;saveH();markCustom();closeModal();selId=null;fire=null;$("#sheet").hidden=true;updateFirebar();fit();renderList();toast(out.length+"개소를 가져왔습니다"+(bad.length?" (제외 "+bad.length+"행: "+bad.slice(0,5).join(", ")+")":""))}catch(err){toast(err.message)}};
+  fr.onerror=()=>toast("파일을 읽을 수 없습니다");
+  fr.readAsText(f,"utf-8");e.target.value="";
+};
+
+/* ───────── 공통 ───────── */
+let tt=0;
+function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,3200)}
+function go(v){
+  ["vMap","vList","vRec"].forEach(id=>$("#"+id).hidden=id!==v);
+  document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.v===v));
+  if(v==="vMap")requestAnimationFrame(()=>{size();draw()});
+  if(v==="vList")renderList();if(v==="vRec")renderRec();
+}
+document.querySelectorAll("nav.tabs button").forEach(b=>b.onclick=()=>go(b.dataset.v));
+
+/* 시작 */
+size();buildChips();fit();renderList();renderRec();
+$("#mapnote").textContent=BASES[base].name+" · "+BASES[base].att;
+if(BASES[base].key&&!vkey)setBase("osm");
+if(inFrame){setTimeout(()=>toast("미리보기 화면입니다. 지도·위성·GPS는 크롬 등 브라우저에서 열어야 보입니다"),600)}
+window.addEventListener("load",()=>{size();fit()});
+})();
+</script>
+</body>
+</html>
