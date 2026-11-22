@@ -324,7 +324,7 @@ let base=ls.get("gc_base","osm"), vkey=ls.get("gc_vkey","");
 let view={cx:0.5,cy:0.5,z:14}, W=360, Hh=500;
 (function loadH(){
   const o=ls.get("gc_h",null);
-  if(Array.isArray(o)&&o.length){H=o;custom=true}else H=JSON.parse(JSON.stringify(SAMPLE.hydrants));
+  if(Array.isArray(o)&&o.length){H=o;custom=true;const ly=ls.get("gc_layers",null);if(ly){L.stations=ly.stations||[];L.sources=ly.sources||[]}}else H=JSON.parse(JSON.stringify(SAMPLE.hydrants));
   $("#dataTag").textContent=custom?"사용자 자료":"예시 자료";
   $("#dataTag").className="tag"+(custom?"":" demo");
 })();
@@ -1114,9 +1114,14 @@ function download(name,text,type){
   const b=new Blob(["﻿"+text],{type:type||"text/csv;charset=utf-8"}),a=document.createElement("a");
   a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);
 }
-const HCOLS=["식별번호","주소","유형","관경","관로","위도","경도","정압","잔류압","시험유량","시험일","추정유량","이전K"];
+const HCOLS=["시설구분","식별번호","주소","유형","관경","관로","위도","경도","정압","잔류압","시험유량","시험일","추정유량","이전K","저수량"];
+const STATION_KINDS=["소방서","119안전센터","안전센터","지역대","119지역대"];
+const SOURCE_KINDS=["소화수조","저수조","급수탑","하천취수","취수점","저수지"];
 function hydrantsCSV(){
-  return [HCOLS.map(q).join(","),...H.map(h=>[h.id,h.addr,h.type,h.dia,h.pipe,h.lat,h.lon,h.measured?h.ps:"",h.measured?h.pr:"",h.measured?h.qf:"",h.measured?h.date:"",h.measured?"":h.estQ,h.kPrev||""].map(q).join(","))].join("\r\n");
+  const rows=H.map(h=>["소화전",h.id,h.addr,h.type,h.dia,h.pipe,h.lat,h.lon,h.measured?h.ps:"",h.measured?h.pr:"",h.measured?h.qf:"",h.measured?h.date:"",h.measured?"":h.estQ,h.kPrev||"",""]);
+  L.stations.forEach((s,i)=>rows.push([s.kind,s.id||"ST-"+(i+1),s.name,"","","",s.pos[0],s.pos[1],"","","","","","",""]));
+  L.sources.forEach((s,i)=>rows.push([s.kind,s.id||"WS-"+(i+1),s.name,"","","",s.pos[0],s.pos[1],"","","","","","",s.vol??""]));
+  return [HCOLS.map(q).join(","),...rows.map(r=>r.map(q).join(","))].join("\r\n");
 }
 function surveysCSV(){
   const head=["조사일","식별번호","조사자","이상항목","Ps(MPa)","Pr(MPa)","QF(L/min)","QR(L/min)","등급","위도","경도","메모"];
@@ -1138,17 +1143,20 @@ function importHydrants(text){
   const hd=rows[0].map(s=>s.trim()),ix=n=>hd.indexOf(n);
   if(ix("식별번호")<0||ix("위도")<0||ix("경도")<0)throw new Error("‘식별번호·위도·경도’ 열이 필요합니다");
   const num=v=>{const n=parseFloat(String(v).replace(/,/g,""));return Number.isFinite(n)?n:null};
-  const out=[],bad=[];
+  const out=[],bad=[],stations=[],sources=[];
   rows.slice(1).forEach((r,i)=>{
     const g=n=>ix(n)<0?"":(r[ix(n)]??"").trim(),lat=num(g("위도")),lon=num(g("경도"));
     if(!g("식별번호")||lat==null||lon==null||lat<30||lat>40||lon<120||lon>135){bad.push(i+2);return}
+    const kind=g("시설구분").replace(/\s/g,"");
+    if(STATION_KINDS.includes(kind)){stations.push({id:g("식별번호"),name:g("주소")||g("식별번호"),kind,pos:[lat,lon]});return}
+    if(SOURCE_KINDS.includes(kind)){sources.push({id:g("식별번호"),name:g("주소")||g("식별번호"),kind,pos:[lat,lon],vol:num(g("저수량"))});return}
     const ps=num(g("정압")),pr=num(g("잔류압")),qf=num(g("시험유량")),meas=ps!=null&&pr!=null&&qf!=null;
     const h={id:g("식별번호"),addr:g("주소")||"-",type:g("유형")||"",dia:num(g("관경"))||100,pipe:g("관로")||"",lat,lon,measured:meas};
     if(meas){h.ps=ps;h.pr=pr;h.qf=qf;h.date=g("시험일")}else h.estQ=num(g("추정유량"))||0;
     const kp=num(g("이전K"));if(kp)h.kPrev=kp;out.push(h);
   });
-  if(!out.length)throw new Error("읽을 수 있는 행이 없습니다 (위도·경도 확인)");
-  return {out,bad};
+  if(!out.length)throw new Error("읽을 수 있는 소화전 행이 없습니다 (위도·경도 확인)");
+  return {out,bad,stations,sources};
 }
 
 /* ───────── 폼 ───────── */
@@ -1205,7 +1213,7 @@ function openSettings(){
    <div class="fsec"><h3>소화전 자료</h3>
     <div class="note" style="margin-bottom:8px">현재 ${H.length}개소 · ${custom?"사용자가 가져오거나 수정한 자료":"시연용 예시 자료"}</div>
     <div class="btns"><button class="btn" id="sImp">CSV 가져오기</button><button class="btn" id="sTpl">양식 내려받기</button><button class="btn" id="sExp">현재 자료 내보내기</button></div>
-    <div class="note" style="margin-top:8px">양식 열: ${HCOLS.join(", ")}. 정압·잔류압·시험유량이 모두 있으면 실측, 없으면 추정유량으로 추정 등급을 표시합니다. 엑셀에서 편집 후 CSV(UTF-8)로 저장하세요. QGIS에서는 ‘구분된 텍스트 레이어’로 같은 파일을 열 수 있습니다.</div></div>
+    <div class="note" style="margin-top:8px">양식 열: ${HCOLS.join(", ")}. 시설구분이 소방서·119안전센터면 출동 기준, 소화수조·저수조·하천취수 등이면 대체 수원으로 읽고, 비어 있거나 소화전이면 소화전으로 읽습니다. 정압·잔류압·시험유량이 모두 있으면 실측, 없으면 추정유량으로 추정 등급을 표시합니다. 엑셀에서 편집 후 CSV(UTF-8)로 저장하세요. QGIS에서는 ‘구분된 텍스트 레이어’로 같은 파일을 열 수 있습니다.</div></div>
    <div class="fsec"><h3>초기화</h3><div class="btns"><button class="btn danger" id="sReset">예시 자료로 되돌리기</button><button class="btn danger" id="sClr">조사 기록 모두 지우기</button></div><div class="note" style="margin-top:6px">가져온 자료와 위치 수정이 지워집니다. 조사 기록은 유지됩니다.</div></div>
    <div class="fsec"><h3>저장 위치</h3><div class="note">자료·조사 기록은 이 브라우저에만 저장됩니다. 기기를 바꾸거나 브라우저 데이터를 지우면 사라지므로 CSV로 자주 내보내 두세요.</div></div>`,
    `<button class="btn pri" id="sOk">닫기</button>`);
@@ -1213,21 +1221,29 @@ function openSettings(){
   $("#vk").onchange=()=>{vkey=$("#vk").value.trim();ls.set("gc_vkey",vkey);if(BASES[base].key)setBase(base)};
   $("#sOk").onclick=closeModal;
   $("#sImp").onclick=()=>$("#fileIn").click();
-  $("#sTpl").onclick=()=>{download("소화전_자료_양식.csv",[HCOLS.map(q).join(","),["KB-GC-0001","김천시 ○○동 ○○로 12","지상식",150,"A-1",36.1398,128.1136,0.35,0.22,3200,"2026-11-01","",""].map(q).join(","),["KB-GC-0002","김천시 ○○동 ○○길 5","지하식",100,"B-2",36.141,128.117,"","","","",1800,""].map(q).join(",")].join("\r\n"))};
+  $("#sTpl").onclick=()=>{download("소방용수_자료_양식.csv",[HCOLS,
+    ["소화전","GG-GY-0001","고양시 덕양구 화정동 ○○로 12","지상식",150,"화정-1",37.6347,126.8326,0.38,0.24,3100,"2026-11-01","","",""],
+    ["소화전","GG-GY-0002","고양시 덕양구 화정동 ○○길 5","지하식",100,"화정-2",37.6362,126.8301,"","","","",1800,"",""],
+    ["소방서","ST-01","○○소방서","","","",37.6400,126.8350,"","","","","","",""],
+    ["소화수조","WS-01","○○공원 소화수조","","","",37.6330,126.8280,"","","","","","",100]].map(r=>r.map(q).join(",")).join("\r\n"))};
   $("#sExp").onclick=()=>download("소화전_자료_"+today()+".csv",hydrantsCSV());
   let armed=false;
   let armed2=false;
   $("#sClr").onclick=()=>{if(!armed2){armed2=true;$("#sClr").textContent="한 번 더 누르면 지웁니다";return}S=[];ls.set("gc_surveys",S);closeModal();renderRec();renderList();toast("조사 기록을 지웠습니다")};
   $("#sReset").onclick=()=>{if(!armed){armed=true;$("#sReset").textContent="한 번 더 누르면 되돌립니다";return}
-    ls.del("gc_h");H=JSON.parse(JSON.stringify(SAMPLE.hydrants));custom=false;$("#dataTag").textContent="예시 자료";$("#dataTag").className="tag demo";closeModal();selId=null;$("#sheet").hidden=true;fit();renderList();toast("예시 자료로 되돌렸습니다")};
+    ls.del("gc_h");ls.del("gc_layers");L.stations=SAMPLE.stations;L.sources=SAMPLE.sources;H=JSON.parse(JSON.stringify(SAMPLE.hydrants));custom=false;$("#dataTag").textContent="예시 자료";$("#dataTag").className="tag demo";closeModal();selId=null;$("#sheet").hidden=true;fit();renderList();toast("예시 자료로 되돌렸습니다")};
 }
 $("#btnSet").onclick=openSettings;
 $("#fileIn").onchange=e=>{
   const f=e.target.files[0];if(!f)return;
   const fr=new FileReader();
-  fr.onload=()=>{try{const {out,bad}=importHydrants(String(fr.result));H=out;custom=true;saveH();markCustom();closeModal();selId=null;fire=null;$("#sheet").hidden=true;updateFirebar();fit();renderList();toast(out.length+"개소를 가져왔습니다"+(bad.length?" (제외 "+bad.length+"행: "+bad.slice(0,5).join(", ")+")":""))}catch(err){toast(err.message)}};
+  fr.onload=()=>{try{
+    const buf=new Uint8Array(fr.result);let text;
+    try{text=new TextDecoder("utf-8",{fatal:true}).decode(buf)}catch(_){text=new TextDecoder("euc-kr").decode(buf)}   /* 엑셀 기본 CSV(CP949)도 읽기 */
+    const {out,bad,stations,sources}=importHydrants(text);H=out;custom=true;saveH();
+    L.stations=stations;L.sources=sources;ls.set("gc_layers",{stations,sources});markCustom();closeModal();selId=null;fire=null;$("#sheet").hidden=true;updateFirebar();fit();renderList();toast(`소화전 ${out.length}개소${stations.length?` · 소방관서 ${stations.length}`:""}${sources.length?` · 대체수원 ${sources.length}`:""}를 가져왔습니다`+(bad.length?" (제외 "+bad.length+"행: "+bad.slice(0,5).join(", ")+")":""))}catch(err){toast(err.message)}};
   fr.onerror=()=>toast("파일을 읽을 수 없습니다");
-  fr.readAsText(f,"utf-8");e.target.value="";
+  fr.readAsArrayBuffer(f);e.target.value="";
 };
 
 /* ───────── 공통 ───────── */
