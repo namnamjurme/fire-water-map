@@ -60,7 +60,8 @@ main{flex:1 1 auto;min-height:0;position:relative}
 #mapwrap{position:absolute;inset:0;background:var(--land);touch-action:none;overflow:hidden}
 #tiles{position:absolute;inset:0;overflow:hidden;pointer-events:none}
 #tiles img{position:absolute;left:0;top:0;max-width:none;transform-origin:0 0;user-select:none;-webkit-user-drag:none}
-#map{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;user-select:none;-webkit-user-select:none}
+#windfx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}
+#map{z-index:1;position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;user-select:none;-webkit-user-select:none}
 .chips{position:absolute;left:0;right:0;top:8px;display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;z-index:2}
 .chips::-webkit-scrollbar{display:none}
 .chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:5px 11px 5px 7px;font-size:12px;font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,.2)}
@@ -77,6 +78,12 @@ main{flex:1 1 auto;min-height:0;position:relative}
 .mapnote{position:absolute;left:max(12px,env(safe-area-inset-left,0px));bottom:6px;font-size:11px;color:var(--ink2);background:color-mix(in srgb,var(--surface) 90%,transparent);padding:2px 8px;border-radius:6px;z-index:2;max-width:75%}
 .scalebar{position:absolute;left:max(12px,env(safe-area-inset-left,0px));bottom:30px;z-index:2;font-size:11px;color:var(--ink);pointer-events:none;background:color-mix(in srgb,var(--surface) 75%,transparent);padding:2px 6px;border-radius:4px}
 .scalebar i{display:block;height:6px;border:2px solid var(--ink);border-top:none;margin-bottom:2px}
+.wx{position:absolute;left:max(12px,env(safe-area-inset-left,0px));top:96px;z-index:2;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:7px 10px 7px 8px;box-shadow:0 1px 3px rgba(0,0,0,.25);text-align:left;max-width:calc(100% - 90px)}
+.wx svg{width:34px;height:34px;flex:0 0 auto}
+.wx .wxl{display:flex;flex-direction:column;line-height:1.3;min-width:0}
+.wx b{font-size:14px;white-space:nowrap}
+.wx .s{font-size:12px;color:var(--ink2);white-space:nowrap}
+.wx .t{font-size:10.5px;color:var(--ink2);white-space:nowrap}
 .firebar{position:absolute;left:12px;right:12px;top:48px;z-index:2;display:none;background:var(--accent);color:var(--accent-ink);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:500;align-items:center;gap:8px}
 .firebar.on{display:flex}
 .firebar button{margin-left:auto;background:transparent;border:1px solid currentColor;border-radius:6px;padding:3px 9px;color:inherit;font-size:12px}
@@ -169,6 +176,7 @@ nav.tabs svg{width:22px;height:22px}
     <section class="view" id="vMap">
       <div id="mapwrap">
         <div id="tiles"></div>
+        <canvas id="windfx" aria-hidden="true"></canvas>
         <svg id="map" role="img" aria-label="소방용수시설 지도"></svg>
         <div class="chips gut" id="chips"></div>
         <div class="firebar gut" id="firebar"><span id="firetxt"></span><button id="fireoff">해제</button></div>
@@ -181,6 +189,7 @@ nav.tabs svg{width:22px;height:22px}
         </div>
         <div class="scalebar" id="scalebar"></div>
         <div class="mapnote" id="mapnote"></div>
+        <button class="wx" id="wx" aria-label="현재 기상 (눌러서 새로고침)"><span class="wxl">기상 정보 확인 중…</span></button>
       </div>
       <div class="sheet" id="sheet" hidden><div class="grab"></div><div class="sbody gut" id="sheetBody"></div></div>
     </section>
@@ -224,8 +233,8 @@ const CHECKS=["외관 손상","개폐 불량","부속품 분실","장애물 있�
 const BASES={
   osm:{name:"일반 지도",url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png",att:"© OpenStreetMap contributors",max:19},
   sat:{name:"위성 사진",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",att:"Imagery © Esri",max:19},
-  vw:{name:"브이월드 일반",url:"https://api.vworld.kr/req/wmts/1.0.0/{key}/Base/{z}/{y}/{x}.png",att:"© VWorld(국토교통부)",max:18,key:true},
-  vws:{name:"브이월드 위성",url:"https://api.vworld.kr/req/wmts/1.0.0/{key}/Satellite/{z}/{y}/{x}.jpeg",att:"© VWorld(국토교통부)",max:18,key:true},
+  vw:{name:"브이월드 일반 (상호·건물명)",url:"https://api.vworld.kr/req/wmts/1.0.0/{key}/Base/{z}/{y}/{x}.png",att:"© VWorld(국토교통부)",max:19,key:true},
+  vws:{name:"브이월드 위성+지명",url:"https://api.vworld.kr/req/wmts/1.0.0/{key}/Satellite/{z}/{y}/{x}.jpeg",over:"https://api.vworld.kr/req/wmts/1.0.0/{key}/Hybrid/{z}/{y}/{x}.png",att:"© VWorld(국토교통부)",max:19,key:true},
   schem:{name:"도식 (오프라인)",att:"도식 배경 · 실제 지도 아님",max:19}
 };
 const $=s=>document.querySelector(s);
@@ -288,27 +297,28 @@ function ll2s(lat,lon){const [x,y]=ll2w(lat,lon),k=kk();return [(x-view.cx)*k+W/
 function s2ll(px,py){const k=kk();return w2ll(view.cx+(px-W/2)/k,view.cy+(py-Hh/2)/k)}
 const mpp=lat=>40075016.686*Math.cos(lat*Math.PI/180)/kk();
 function size(){const r=$("#mapwrap").getBoundingClientRect();W=r.width||W;Hh=r.height||Hh;svg.setAttribute("viewBox",`0 0 ${W} ${Hh}`)}
-function setZ(z){view.z=Math.max(10,Math.min(BASES[base].max+1,z))}
+function setZ(z){view.z=Math.max(10,Math.min(BASES[base].max+1.5,z))}
 
 /* 타일 */
 const tileMap=new Map();
-function tileURL(z,x,y){
-  const b=BASES[base]; if(!b.url) return null;
-  if(b.key&&!vkey) return null;
-  return b.url.replace("{z}",z).replace("{x}",x).replace("{y}",y).replace("{key}",encodeURIComponent(vkey));
+const DPR=Math.min(2,window.devicePixelRatio||1);
+function tileURL(tpl,z,x,y){
+  if(!tpl) return null; if(BASES[base].key&&!vkey) return null;
+  return tpl.replace("{z}",z).replace("{x}",x).replace("{y}",y).replace("{key}",encodeURIComponent(vkey));
 }
 let tileKey="";
 function drawTiles(){
   if(!BASES[base].url||(BASES[base].key&&!vkey)){tilesEl.innerHTML="";tileMap.clear();tileKey="";return}
-  const z=Math.max(3,Math.min(BASES[base].max,Math.round(view.z))), n=Math.pow(2,z), sc=Math.pow(2,view.z-z);
+  const b=BASES[base], tpls=[b.url].concat(b.over?[b.over]:[]);
+  const z=Math.max(3,Math.min(b.max,Math.round(view.z+Math.log2(DPR)-0.15))), n=Math.pow(2,z), sc=Math.pow(2,view.z-z);
   const cxp=view.cx*256*n, cyp=view.cy*256*n;
   const x0=Math.floor((cxp-W/2/sc)/256), x1=Math.floor((cxp+W/2/sc)/256);
   const y0=Math.max(0,Math.floor((cyp-Hh/2/sc)/256)), y1=Math.min(n-1,Math.floor((cyp+Hh/2/sc)/256));
   const want=new Set();
-  for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++){
-    const xm=((x%n)+n)%n, key=base+"/"+z+"/"+xm+"/"+y+"/"+x; want.add(key);
+  for(let li=0;li<tpls.length;li++)for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++){
+    const xm=((x%n)+n)%n, key=base+li+"/"+z+"/"+xm+"/"+y+"/"+x; want.add(key);
     let im=tileMap.get(key);
-    if(!im){const u=tileURL(z,xm,y);if(!u)continue;im=new Image();im.decoding="async";im.alt="";im.draggable=false;im.src=u;im.onerror=()=>{im.style.visibility="hidden";noteTiles(false)};im.onload=()=>noteTiles(true);tilesEl.appendChild(im);tileMap.set(key,im)}
+    if(!im){const u=tileURL(tpls[li],z,xm,y);if(!u)continue;im=new Image();im.style.zIndex=li;im.decoding="async";im.alt="";im.draggable=false;im.src=u;im.onerror=()=>{im.style.visibility="hidden";noteTiles(false)};im.onload=()=>noteTiles(true);tilesEl.appendChild(im);tileMap.set(key,im)}
     im.style.transform=`translate(${((x*256-cxp)*sc+W/2).toFixed(2)}px,${((y*256-cyp)*sc+Hh/2).toFixed(2)}px) scale(${sc.toFixed(5)})`;
   }
   tileMap.forEach((im,key)=>{if(!want.has(key)){im.remove();tileMap.delete(key)}});
@@ -359,13 +369,17 @@ const visible=h=>{const p=perf(h);return p.est?filt.est&&filt[p.g]:filt[p.g]};
 let raf=0;
 const draw=()=>{if(raf)return;raf=requestAnimationFrame(()=>{raf=0;drawNow()})};
 function drawNow(){
-  drawTiles();
+  drawTiles(); clearFx();
   let o=base==="schem"?schemSVG():"";
   L.sources.forEach(s=>{const [x,y]=ll2s(s.pos[0],s.pos[1]);if(!custom||true)o+=iconSVG("src",x,y,s.name)});
   L.stations.forEach(s=>{const [x,y]=ll2s(s.pos[0],s.pos[1]);o+=iconSVG("station",x,y,s.name)});
   if(fire){
     const [fx,fy]=ll2s(fire.lat,fire.lon), rr=RADIUS/mpp(fire.lat);
     o+=`<circle cx="${fx}" cy="${fy}" r="${rr}" fill="color-mix(in srgb,var(--accent) 14%,transparent)" stroke="var(--accent)" stroke-width="2.5" stroke-dasharray="7 5"/>`;
+    if(wx&&wx.ws>=0.5){const b=(wx.wd+180)*Math.PI/180,R2=rr*1.6,a1=b-Math.PI/6,a2=b+Math.PI/6;
+      const P=a=>[fx+Math.sin(a)*R2,fy-Math.cos(a)*R2];const [x1,y1]=P(a1),[x2,y2]=P(a2),[tx,ty]=[fx+Math.sin(b)*(R2+14),fy-Math.cos(b)*(R2+14)];
+      o+=`<path d="M${fx} ${fy}L${x1.toFixed(1)} ${y1.toFixed(1)}A${R2.toFixed(1)} ${R2.toFixed(1)} 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)}Z" fill="rgba(230,140,0,.18)" stroke="#e08a00" stroke-width="2" stroke-dasharray="4 4"/>`;
+      o+=`<text x="${tx.toFixed(1)}" y="${(ty+4).toFixed(1)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#8a4b00" stroke="#fff" stroke-width="3" paint-order="stroke" font-family="var(--font)">풍하측</text>`;}
   }
   H.filter(visible).sort((a,b)=>(a.id===selId)-(b.id===selId)).forEach(h=>{const [x,y]=ll2s(h.lat,h.lon);if(x>-30&&x<W+30&&y>-30&&y<Hh+30)o+=markerSVG(h,x,y,h.id===selId,inRange(h))});
   if(fire){const [fx,fy]=ll2s(fire.lat,fire.lon);o+=`<g transform="translate(${fx} ${fy})"><path d="M0 0 C-14 -16 -13 -30 0 -40 C13 -30 14 -16 0 0Z" fill="var(--accent)" stroke="#fff" stroke-width="2"/><circle cy="-24" r="5" fill="#fff"/></g>`}
@@ -416,7 +430,7 @@ function endPtr(e){
   const was=ptrs.size; ptrs.delete(e.pointerId);
   if(was===1&&gest&&gest.moved<=6&&e.type==="pointerup")tap(e.clientX,e.clientY);
   if(ptrs.size===1){const [p]=[...ptrs.values()];gest={moved:99,sx:p.x,sy:p.y,cx:view.cx,cy:view.cy,z:view.z,d:0,mx:0,my:0}}
-  if(ptrs.size===0)gest=null;
+  if(ptrs.size===0){gest=null;wxSoon()}
 }
 svg.addEventListener("pointerup",endPtr);svg.addEventListener("pointercancel",endPtr);
 svg.addEventListener("wheel",e=>{e.preventDefault();const r=svg.getBoundingClientRect();zoomAt(e.deltaY<0?1.25:0.8,e.clientX-r.left,e.clientY-r.top)},{passive:false});
@@ -435,17 +449,85 @@ function setBase(b){base=b;ls.set("gc_base",b);tilesEl.innerHTML="";tileMap.clea
 $("#zgps").onclick=()=>{
   if(!navigator.geolocation){toast("이 브라우저는 위치 기능을 지원하지 않습니다");return}
   toast("위치 확인 중…");
-  navigator.geolocation.getCurrentPosition(p=>{me={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy};flyTo(me.lat,me.lon,17);toast("내 위치 ±"+Math.round(p.coords.accuracy)+" m")},
+  navigator.geolocation.getCurrentPosition(p=>{me={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy};flyTo(me.lat,me.lon,17);fetchWx(false);toast("내 위치 ±"+Math.round(p.coords.accuracy)+" m")},
    err=>toast(err.code===1?"위치 권한이 거부되었습니다 (브라우저 설정 확인)":"위치를 확인할 수 없습니다. HTTPS 주소에서 열어야 동작합니다"),{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
 };
 new ResizeObserver(()=>{const a=W,b=Hh;size();if(Math.abs(a-W)>2||Math.abs(b-Hh)>2)draw()}).observe($("#mapwrap"));
 
+/* ───────── 실시간 기상 (Open-Meteo, 키 불필요) ───────── */
+const DIR16=["북","북북동","북동","동북동","동","동남동","남동","남남동","남","남남서","남서","서남서","서","서북서","북서","북북서"];
+const dirName=d=>DIR16[Math.round(((d%360)+360)%360/22.5)%16];
+const windLvl=v=>v<0.5?"고요":v<4?"약함":v<9?"보통":v<14?"강함":"매우 강함";
+let wx=null, wxAt=null, wxBusy=false, wxErr=false;
+const wxPoint=()=>fire||me||s2ll(W/2,Hh/2);
+async function fetchWx(force){
+  if(wxBusy) return; const p=wxPoint();
+  if(!force&&wx&&wxAt&&dist(p,wxAt)<3000&&Date.now()-wx.fetched<10*60000) return;
+  wxBusy=true; renderWx();
+  try{
+    const u="https://api.open-meteo.com/v1/forecast?latitude="+p.lat.toFixed(4)+"&longitude="+p.lon.toFixed(4)+"&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation&wind_speed_unit=ms&timezone=Asia%2FSeoul";
+    const r=await fetch(u,{cache:"no-store"}); if(!r.ok) throw new Error(r.status);
+    const c=(await r.json()).current;
+    wx={t:c.temperature_2m,rh:c.relative_humidity_2m,ws:c.wind_speed_10m,wd:c.wind_direction_10m,wg:c.wind_gusts_10m,pr:c.precipitation,time:c.time,fetched:Date.now()};
+    wxAt={lat:p.lat,lon:p.lon}; wxErr=false;
+  }catch(e){wxErr=true}
+  wxBusy=false; renderWx(); draw();
+  if(fire&&!selId&&!$("#sheet").hidden) showFire();
+}
+function renderWx(){
+  const el=$("#wx");
+  if(!wx){el.innerHTML=`<span class="wxl"><b>${wxErr?"기상 정보 없음":"기상 확인 중…"}</b><span class="t">${wxErr?"눌러서 다시 시도":"Open-Meteo"}</span></span>`;return}
+  const rot=(wx.wd+180)%360, hm=String(wx.time||"").slice(11,16);
+  el.innerHTML=`<svg viewBox="-17 -17 34 34" aria-hidden="true"><circle r="16" fill="var(--surface2)"/><text y="-9.5" text-anchor="middle" font-size="6.5" font-weight="700" fill="var(--ink2)">N</text><g transform="rotate(${rot})"><path d="M0 -11 L6 3 L1.5 1 L1.5 10 L-1.5 10 L-1.5 1 L-6 3Z" fill="#1e6ee6"/></g></svg>
+   <span class="wxl"><b>${dirName(wx.wd)}풍 ${wx.ws.toFixed(1)} m/s <span class="s">${windLvl(wx.ws)}</span></b><span class="s">돌풍 ${wx.wg.toFixed(1)} · ${wx.t.toFixed(1)}℃ · 습도 ${Math.round(wx.rh)}%</span><span class="t">${wxBusy?"갱신 중…":hm+" 기준 · 기상모델"}${wxErr?" · 갱신 실패":""}</span></span>`;
+  el.title="화살표는 바람이 불어 가는 방향";
+}
+$("#wx").onclick=()=>{fetchWx(true);toast("기상 정보를 새로 받습니다")};
+setInterval(()=>{if(!document.hidden)fetchWx(true)},10*60000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)fetchWx(false)});
+let wxT=0; const wxSoon=()=>{clearTimeout(wxT);wxT=setTimeout(()=>fetchWx(false),1500)};
+
+/* ───────── 바람 흐름 애니메이션 ───────── */
+const wfx=$("#windfx"), wctx=wfx.getContext("2d");
+let windOn=ls.get("gc_windfx",!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches));
+let parts=[], wLast=0;
+function clearFx(){wctx.clearRect(0,0,W,Hh)}
+function spawn(p){p.x=Math.random()*(W+40)-20;p.y=Math.random()*(Hh+40)-20;p.age=0;p.life=1.4+Math.random()*3.2;p.k=0.75+Math.random()*0.5}
+function fxLoop(ts){
+  requestAnimationFrame(fxLoop);
+  const d=window.devicePixelRatio||1;
+  if(wfx.width!==Math.round(W*d)||wfx.height!==Math.round(Hh*d)){wfx.width=Math.round(W*d);wfx.height=Math.round(Hh*d);wctx.setTransform(d,0,0,d,0,0);parts=[]}
+  const active=windOn&&wx&&wx.ws>=0.3&&!$("#vMap").hidden&&!document.hidden&&!gest;
+  if(!active){if(parts.length){clearFx();parts=[]}wLast=ts;return}
+  const dt=Math.min(0.05,Math.max(0.001,(ts-wLast)/1000)); wLast=ts;
+  const n=Math.round(Math.min(280,W*Hh/1700*Math.min(1.6,0.55+wx.ws/6)));
+  while(parts.length<n){const p={};spawn(p);p.age=Math.random()*p.life;parts.push(p)}
+  if(parts.length>n)parts.length=n;
+  wctx.globalCompositeOperation="destination-out";wctx.fillStyle="rgba(0,0,0,0.09)";wctx.fillRect(0,0,W,Hh);
+  wctx.globalCompositeOperation="source-over";
+  const t=ts/1000, g=Math.max(0,(wx.wg||wx.ws)-wx.ws);
+  const v=wx.ws+g*0.7*Math.pow(Math.max(0,Math.sin(t*0.9)),2);   /* 돌풍이 주기적으로 지나가는 효과 */
+  const spd=Math.min(220,16+v*14), b=(wx.wd+180)*Math.PI/180;      /* 바람이 불어 가는 방향 */
+  const onPhoto=base==="sat"||base==="vws";
+  wctx.strokeStyle=onPhoto?"rgba(255,255,255,0.8)":"rgba(18,88,205,0.55)";
+  wctx.lineWidth=1.6;wctx.lineCap="round";wctx.beginPath();
+  for(const p of parts){
+    const a=b+0.15*Math.sin(p.x*0.011+t*0.7)+0.1*Math.sin(p.y*0.016-t*0.5), s=spd*p.k;
+    const nx=p.x+Math.sin(a)*s*dt, ny=p.y-Math.cos(a)*s*dt;
+    wctx.moveTo(p.x,p.y);wctx.lineTo(nx,ny);p.x=nx;p.y=ny;p.age+=dt;
+    if(p.age>p.life||nx<-30||nx>W+30||ny<-30||ny>Hh+30)spawn(p);
+  }
+  wctx.stroke();
+}
+requestAnimationFrame(fxLoop);
+
 /* ───────── 칩·화재 지점 ───────── */
 function buildChips(){
   const defs=[["1","1등급"],["2","2등급"],["3","3등급"],["4","4등급"],["X","등급 외"],["est","추정 포함"]];
-  let o=`<button class="chip ${fireMode?"act":""}" id="chipFire" aria-pressed="${fireMode}"><span aria-hidden="true">◎</span>화재 지점</button>`;
+  let o=`<button class="chip ${fireMode?"act":""}" id="chipFire" aria-pressed="${fireMode}"><span aria-hidden="true">◎</span>화재 지점</button><button class="chip" id="chipWind" aria-pressed="${windOn}"><span aria-hidden="true">≋</span>바람 흐름</button>`;
   defs.forEach(([k,t])=>{const c=k==="est"?"gde":"gd"+(k==="X"?"x":k);o+=`<button class="chip" data-f="${k}" aria-pressed="${filt[k]}"><span class="dot ${c}">${k==="est"?"":k==="X"?"외":k}</span>${t}</button>`});
   $("#chips").innerHTML=o;
+  $("#chipWind").onclick=()=>{windOn=!windOn;ls.set("gc_windfx",windOn);buildChips();if(!windOn)clearFx()};
   $("#chipFire").onclick=()=>{fireMode=!fireMode;moveId=null;if(fireMode)closeSheet();updateFirebar();buildChips()};
   $("#chips").querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{filt[b.dataset.f]=!filt[b.dataset.f];buildChips();draw();renderList()});
 }
@@ -454,7 +536,7 @@ function updateFirebar(){
   $("#firetxt").textContent=moveId?"새 위치를 지도에서 눌러 주세요":fireMode&&!fire?"지도를 눌러 화재 지점을 지정하세요":fireMode?"다른 곳을 누르면 지점이 바뀝니다":"화재 지점 기준 "+RADIUS+" m 조회 중";
 }
 $("#fireoff").onclick=()=>{fire=null;fireMode=false;moveId=null;updateFirebar();buildChips();closeSheet();draw()};
-function setFire(lat,lon){fire={lat,lon};updateFirebar();draw();showFire()}
+function setFire(lat,lon){fire={lat,lon};updateFirebar();draw();showFire();fetchWx(false)}
 
 /* ───────── 시트 ───────── */
 function closeSheet(){selId=null;$("#sheet").hidden=true;draw()}
@@ -498,6 +580,7 @@ function showFire(){
   let o=`<div class="sh-head"><div class="badge" style="background:var(--accent);color:var(--accent-ink);font-size:20px">${z.list.length}</div>
    <div class="sh-title"><div class="id">화재 지점 반경 ${RADIUS} m</div><div class="addr">소화전 ${z.list.length}개소 · 가까운 순</div></div><span class="spacer"></span><button class="iconbtn" id="shClose" aria-label="닫기">✕</button></div>`;
   o+=`<div class="kv"><div style="grid-column:1/-1"><b>구역 가용유량 Q<sub>구역</sub></b><span class="num">${fmtQ(z.total)}</span> <small>L/min · 같은 관로는 관경별 상한(150 mm 3대, 100 mm 2대)까지만 합산</small></div></div>`;
+  if(wx){o+=`<div class="rec" style="margin-bottom:10px"><div class="h"><b>바람</b><span class="pill warn">${dirName(wx.wd)}풍 ${wx.ws.toFixed(1)} m/s · ${windLvl(wx.ws)}</span><span class="spacer"></span><span class="note">${wx.t.toFixed(1)}℃ · 습도 ${Math.round(wx.rh)}%</span></div><div class="m">${wx.ws>=0.5?`연소 확대 우려 방향(풍하측): <b>${dirName((wx.wd+180)%360)}쪽</b>. 지도에 주황색 부채꼴로 표시했습니다.`:"바람이 거의 없습니다."} 돌풍 ${wx.wg.toFixed(1)} m/s</div></div>`}
   if(!z.list.length)o+=`<div class="empty">반경 안에 소화전이 없습니다. 가까운 소방서·수조를 확인하세요.</div>`;
   o+=z.list.map(r=>`<button class="row" data-id="${esc(r.h.id)}"><span class="dot ${gcls(r.p.g,r.p.est)}" style="${r.p.est?"color:"+gcol(r.p.g):""}">${r.p.g==="X"?"외":r.p.g}</span>
     <span class="mid"><span class="t">${esc(r.h.id)}</span><div class="a">${esc(r.h.addr)}</div></span>
@@ -626,7 +709,7 @@ function openSettings(){
   openModal("지도·자료 설정",`
    <div class="fsec"><h3>배경 지도</h3><div class="radios">${radios}</div>
     <div class="fld" style="margin-top:10px"><label for="vk">브이월드 인증키 (선택)</label><input id="vk" value="${esc(vkey)}" placeholder="발급받은 키 입력" autocomplete="off"></div>
-    <div class="note">일반·위성은 인터넷 연결이 필요합니다. 연결이 안 되면 ‘도식(오프라인)’을 쓰세요.</div></div>
+    <div class="note">상가·건물 이름까지 크게 보려면 브이월드를 쓰세요. vworld.kr에서 무료 인증키를 받을 때 서비스 URL에 이 앱 주소(예: namnamjurme.github.io)를 등록해야 합니다. 일반·위성은 인터넷 연결이 필요하며, 연결이 안 되면 ‘도식(오프라인)’을 쓰세요.</div></div>
    <div class="fsec"><h3>소화전 자료</h3>
     <div class="note" style="margin-bottom:8px">현재 ${H.length}개소 · ${custom?"사용자가 가져오거나 수정한 자료":"시연용 예시 자료"}</div>
     <div class="btns"><button class="btn" id="sImp">CSV 가져오기</button><button class="btn" id="sTpl">양식 내려받기</button><button class="btn" id="sExp">현재 자료 내보내기</button></div>
@@ -667,7 +750,7 @@ function go(v){
 document.querySelectorAll("nav.tabs button").forEach(b=>b.onclick=()=>go(b.dataset.v));
 
 /* 시작 */
-size();buildChips();fit();renderList();renderRec();
+size();buildChips();fit();renderList();renderRec();renderWx();setTimeout(()=>fetchWx(true),300);
 $("#mapnote").textContent=BASES[base].name+" · "+BASES[base].att;
 if(BASES[base].key&&!vkey)setBase("osm");
 if(inFrame){setTimeout(()=>toast("미리보기 화면입니다. 지도·위성·GPS는 크롬 등 브라우저에서 열어야 보입니다"),600)}
