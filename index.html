@@ -101,7 +101,7 @@ main{flex:1 1 auto;min-height:0;position:relative}
 .sim .ticks{display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink2);font-variant-numeric:tabular-nums;padding:0 2px}
 .sim .play{display:flex;align-items:center;gap:10px;margin-top:10px}
 .sim .play input{flex:1}
-.sim .tl{min-width:52px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.sim .tl{min-width:92px;font-size:13px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
 .sim .kv{margin:10px 0 6px}
 .sim .kv span{font-size:15px}
 .firebar{position:absolute;left:12px;right:12px;top:48px;z-index:2;display:none;background:var(--accent);color:var(--accent-ink);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:500;align-items:center;gap:8px}
@@ -337,7 +337,7 @@ function ll2s(lat,lon){const [x,y]=ll2w(lat,lon),k=kk();return [(x-view.cx)*k+W/
 function s2ll(px,py){const k=kk();return w2ll(view.cx+(px-W/2)/k,view.cy+(py-Hh/2)/k)}
 const mpp=lat=>40075016.686*Math.cos(lat*Math.PI/180)/kk();
 function size(){const r=$("#mapwrap").getBoundingClientRect();W=r.width||W;Hh=r.height||Hh;svg.setAttribute("viewBox",`0 0 ${W} ${Hh}`)}
-function setZ(z){view.z=Math.max(10,Math.min(BASES[base].max+1.5,z))}
+function setZ(z){view.z=Math.max(8,Math.min(BASES[base].max+1.5,z))}
 
 /* 타일 */
 const tileMap=new Map();
@@ -502,22 +502,25 @@ new ResizeObserver(()=>{const a=W,b=Hh;size();if(Math.abs(a-W)>2||Math.abs(b-Hh)
 
 /* ───────── 화재 확산 가시화 (단순 타원 모델) ─────────
    화재 강도 1~10단계 → 화원 열방출률 Q (MW)
-   무풍 확산속도 R0 = 0.3 + 0.04·Q  [m/min]
+   무풍 확산속도 R0 = 0.2 + 0.018·Q  [m/min]  (24시간·100 MW·5 m/s일 때 풍하측 약 10 km가 되도록 잡은 가시화용 값)
    풍하(전방) Rh = R0·(1+0.5U), 풍상(후방) Rb = R0/(1+0.25U), 장단축비 LB = 1+0.15U (U: 풍속 m/s, LB ≤ 4)
    t분 후 화재 영역: 장반경 a=(Rh+Rb)t/2+r0, 단반경 b=a/LB, 중심은 화원에서 풍하측으로 (Rh−Rb)t/2
    화원 직경 D: HRRPUA 500 kW/m² 가정, 화염높이 L = 0.235Q^0.4 − 1.02D (Heskestad, Q[kW])
    복사열 12.5 kW/m² 거리 = √(χr·Q/(4π·12.5)), χr=0.3 (점열원)
    냉각 필요수량 = Q/(2.6 MJ/kg × η), η=0.5 (물 기화열 이용효율 가정)                       */
-const LV_MW=[1,2,3,5,8,12,18,25,35,50], SIM_TMAX=60, SIM_RATE=3;
-const PRESET=[{k:"약",lv:3},{k:"중",lv:6},{k:"강",lv:10}];
+const LV_MW=[10,20,30,40,50,60,70,80,90,100], SIM_TMAX=1440;      /* 10~100 MW, 24시간(분) */
+const simRate=t=>Math.max(3,t*0.12);                              /* 재생 속도(분/초): 초반은 천천히, 뒤로 갈수록 빠르게 — 24시간이 약 40초 */
+const fmtT=m=>{m=Math.round(m);const h=Math.floor(m/60),r=m%60;return h?(r?`${h}시간 ${r}분`:`${h}시간`):`${r}분`};
+const fmtArea=a=>a>=1e6?[(a/1e6).toFixed(2),"km²"]:a>=1e4?[(a/1e4).toFixed(2),"ha"]:[Math.round(a).toLocaleString("ko-KR"),"m²"];
+const PRESET=[{k:"약",lv:1},{k:"중",lv:5},{k:"강",lv:10}];
 let simCompact=true;
-const presetOf=lv=>lv<=3?"약":lv<=7?"중":"강";   /* 재생: 1초에 3분 */
-const sim={lv:Math.min(10,Math.max(1,ls.get("gc_simlv",5))),t:0,play:false,dir:null};
+const presetOf=lv=>lv<=3?"약":lv<=7?"중":"강";
+const sim={lv:Math.min(10,Math.max(1,ls.get("gc_simlv",5))),t:0,play:false,dir:null,fitT:60};
 const simQ=()=>LV_MW[sim.lv-1];
 function simGeom(t){
   const Uw=wx?Math.max(0,wx.ws):0, ov=sim.dir!=null, Q=simQ(), U=ov?Math.max(Uw,2):Uw;   /* 방향을 직접 정하면 최소 2 m/s로 기울여 표시 */
   const beta=(ov?sim.dir:((wx&&Uw>=0.3?wx.wd:0)+180))*Math.PI/180;
-  const R0=0.3+0.04*Q, Rh=R0*(1+0.5*U), Rb=R0/(1+0.25*U), LB=Math.min(4,1+0.15*U);
+  const R0=0.2+0.018*Q, Rh=R0*(1+0.5*U), Rb=R0/(1+0.25*U), LB=Math.min(4,1+0.15*U);
   const D=Math.sqrt(4*Q*1000/(Math.PI*500)), r0=D/2;
   const a=(Rh+Rb)*t/2+r0, b=Math.max(r0,a/LB), c=(Rh-Rb)*t/2;
   return {Q,U,beta,R0,Rh,Rb,LB,D,r0,a,b,c,calm:U<0.3&&!ov};
@@ -542,10 +545,11 @@ function inBurn(h){
 }
 function fireSVG(){
   let o="";
-  if(sim.t>0) for(let k=10;k<sim.t;k+=10){
+  const stp=[10,30,60,120,180,360].find(s=>sim.t/s<=6)||360;      /* 등시선 간격: 6개 이하가 되도록 */
+  if(sim.t>0) for(let k=stp;k<sim.t;k+=stp){
     let top,d="";
     frontPts(k,72).forEach((p,i)=>{const [x,y]=loc2s(p[0],p[1]);if(i===0)top=[x,y+4];d+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)});
-    o+=`<path d="${d}Z" fill="none" stroke="#5a1200" stroke-width="1.2" stroke-dasharray="4 4" opacity=".75"/><text x="${top[0].toFixed(1)}" y="${(top[1]-4).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#5a1200" stroke="#fff" stroke-width="3" paint-order="stroke" font-family="var(--font)">${k}분</text>`}
+    o+=`<path d="${d}Z" fill="none" stroke="#5a1200" stroke-width="1.2" stroke-dasharray="4 4" opacity=".75"/><text x="${top[0].toFixed(1)}" y="${(top[1]-4).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#5a1200" stroke="#fff" stroke-width="3" paint-order="stroke" font-family="var(--font)">${fmtT(k)}</text>`}
   return o;
 }
 function updSimUI(){
@@ -553,10 +557,10 @@ function updSimUI(){
   const s=simInfo(),g=s.g,z=zoneOf(),burn=H.filter(inBurn).length,ok=z.total>=s.water;
   lv.textContent=`${presetOf(sim.lv)} · ${sim.lv}단계 · ${simQ()} MW`;
   if(!fireMode&&!moveId&&!dirPick&&fire&&(updSimUI.k||"")!==sim.lv+"/"+dirDeg().toFixed(0)){updSimUI.k=sim.lv+"/"+dirDeg().toFixed(0);updateFirebar()}
-  $("#simT").value=sim.t; $("#simTl").textContent=sim.t.toFixed(0)+"분";
+  $("#simT").value=sim.t; $("#simTl").textContent=fmtT(sim.t);
   $("#simPlay").textContent=sim.play?"❚❚ 일시정지":sim.t>=SIM_TMAX?"↺ 다시 재생":"▶ 확산 재생";
-  $("#simOut").innerHTML=`<div><b>풍하측 확산거리</b><span class="num">${Math.round(s.head)}</span> <small>m</small></div>
-   <div><b>연소 면적</b><span class="num">${s.area>=10000?(s.area/10000).toFixed(2)+"</span> <small>ha</small>":Math.round(s.area).toLocaleString("ko-KR")+"</span> <small>m²</small>"}</div>
+  $("#simOut").innerHTML=`<div><b>풍하측 확산거리</b><span class="num">${s.head>=1000?(s.head/1000).toFixed(2):Math.round(s.head)}</span> <small>${s.head>=1000?"km":"m"}</small></div>
+   <div><b>연소 면적</b><span class="num">${fmtArea(s.area)[0]}</span> <small>${fmtArea(s.area)[1]}</small></div>
    <div><b>화원 직경 / 화염높이</b><span class="num">${g.D.toFixed(1)} / ${s.flame.toFixed(1)}</span> <small>m</small></div>
    <div><b>복사열 12.5 kW/m² 거리</b><span class="num">${s.rad.toFixed(1)}</span> <small>m</small></div>
    <div style="grid-column:1/-1"><b>냉각 필요수량(참고) vs 구역 가용유량</b><span class="num">${fmtQ(s.water)}</span> <small>L/min</small> <span class="pill ${ok?"ok":"bad"}">${ok?"가용유량 충분":"가용유량 부족"} (${fmtQ(z.total)})</span></div>
@@ -564,13 +568,13 @@ function updSimUI(){
   $("#simNote").textContent=g.calm?"바람 정보가 없거나 무풍이라 원형으로 확산합니다.":`풍속 ${g.U.toFixed(1)} m/s 기준 · 전방 ${g.Rh.toFixed(1)} / 후방 ${g.Rb.toFixed(1)} m/min · 장단축비 ${g.LB.toFixed(1)}`;
 }
 function simPanel(){
-  return `<div class="fsec sim"><div class="top"><b>화재 확산 시뮬레이션</b><span class="lv" id="simLv"></span><button class="tog" id="simTog" type="button"></button></div>
+  return `<div class="fsec sim"><div class="top"><b>확산 시뮬레이션</b><span class="lv" id="simLv"></span><button class="tog" id="simTog" type="button"></button></div>
    <button class="btn pri" id="simOps" type="button" style="width:100%;margin-top:8px;background:#1d4ed8;border-color:#1d4ed8">작전 명령 보기</button>
    <div class="seg" role="group" aria-label="화재 강도">${PRESET.map(p=>`<button type="button" data-lv="${p.lv}" aria-pressed="${presetOf(sim.lv)===p.k}">${p.k}<small>${presetOf(sim.lv)===p.k?simQ():LV_MW[p.lv-1]} MW</small></button>`).join("")}</div>
    <label class="note" for="simLevel">세부 단계 (1~10단계 · ${LV_MW[0]}~${LV_MW[9]} MW)</label>
    <input type="range" id="simLevel" min="1" max="10" step="1" value="${sim.lv}">
    <div class="ticks">${LV_MW.map(v=>`<span>${v}</span>`).join("")}</div>
-   <div class="play"><button class="btn pri sm" id="simPlay" type="button"></button><input type="range" id="simT" min="0" max="${SIM_TMAX}" step="1" value="${sim.t}" aria-label="경과 시간"><span class="tl" id="simTl"></span></div>
+   <div class="play"><button class="btn pri sm" id="simPlay" type="button"></button><input type="range" id="simT" min="0" max="${SIM_TMAX}" step="5" value="${sim.t}" aria-label="경과 시간"><span class="tl" id="simTl"></span></div>
    <div class="kv" id="simOut"></div>
    <div class="note" id="simNote"></div>
    <div class="note" style="margin-top:4px">풍향·풍속을 반영한 타원 확산의 가시화용 단순 모델입니다. 건물 구조·연소물·지형은 반영하지 않으므로 실제 예측값으로 쓰지 마세요.</div></div>`;
@@ -582,14 +586,16 @@ function bindSim(){
   const sh=$("#sheet"); sh.classList.toggle("compact",simCompact);
   $("#simTog").textContent=simCompact?"자세히 ▲":"접기 ▼";
   $("#simTog").onclick=()=>{simCompact=!simCompact;sh.classList.toggle("compact",simCompact);$("#simTog").textContent=simCompact?"자세히 ▲":"접기 ▼";if(sim.play||sim.t>0)requestAnimationFrame(fitFire)};
-  document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{setLv(+b.dataset.lv);if(!sim.play){if(sim.t>=SIM_TMAX){sim.t=0;spots=[]}sim.play=true;updSimUI()}});
+  document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{setLv(+b.dataset.lv);if(!sim.play){if(sim.t>=SIM_TMAX){sim.t=0;sim.fitT=60;spots=[];fitFire()}sim.play=true;updSimUI()}});
   $("#simT").oninput=e=>{sim.t=+e.target.value;sim.play=false;spots=spots.filter(s=>s.t0<=sim.t);draw();updSimUI()};
-  $("#simPlay").onclick=()=>{if(sim.play){sim.play=false}else{if(sim.t>=SIM_TMAX){sim.t=0;spots=[]}sim.play=true;fitFire()}updSimUI()};
+  $("#simT").onchange=()=>{sim.fitT=60;fitFire()};
+  $("#simPlay").onclick=()=>{if(sim.play){sim.play=false}else{if(sim.t>=SIM_TMAX){sim.t=0;sim.fitT=60;spots=[]}sim.play=true;fitFire()}updSimUI()};
   updSimUI();
 }
 function fitFire(){
   if(!fire)return; size();
-  const pts=frontPts(SIM_TMAX,48).concat([[0,0]]), es=pts.map(p=>p[0]), ns=pts.map(p=>p[1]);
+  while(sim.t>sim.fitT*0.85&&sim.fitT<SIM_TMAX) sim.fitT=Math.min(SIM_TMAX,sim.fitT*2.5);   /* 화면 범위: 1시간 → 2.5시간 → … → 24시간으로 단계적으로 넓힘 */
+  const pts=frontPts(sim.fitT,48).concat([[0,0]]), es=pts.map(p=>p[0]), ns=pts.map(p=>p[1]);
   const shEl=$("#sheet"), sh=shEl.hidden?0:Math.max(0,$("#mapwrap").getBoundingClientRect().bottom-shEl.getBoundingClientRect().top);
   const top=Math.min(240,Hh*0.36), bot=Math.max(top+80,Hh-sh-14), left=14, right=W-64;
   const bw=Math.max(...es)-Math.min(...es), bh=Math.max(...ns)-Math.min(...ns);
@@ -630,9 +636,9 @@ function computeOps(){
   const c2=all.filter(r=>!inDanger(r.e,r.n,T3,margin)&&!first.out.includes(r)&&r.p.g!=="X"&&+r.p.g<=3)
     .map(r=>Object.assign({},r,{dh:Math.hypot(r.e-hd[0],r.n-hd[1])})).filter(r=>r.dh<=600).sort((a,b)=>a.dh-b.dh);
   const second=pickUnits(c2,2,0);
-  const loc=o=>{const [e,n]=[(o.pos[1]-fire.lon)*KLON,(o.pos[0]-fire.lat)*KLAT];return Object.assign({},o,{d:Math.hypot(e,n)})};
+  const loc=o=>{const [e,n]=[(o.pos[1]-fire.lon)*KLON,(o.pos[0]-fire.lat)*KLAT];return Object.assign({},o,{d:Math.hypot(e,n),bad:inDanger(e,n,T,margin)})};
   const station=L.stations.map(loc).sort((a,b)=>a.d-b.d)[0];
-  const alt=L.sources.map(loc).sort((a,b)=>a.d-b.d)[0];
+  const alt=L.sources.map(loc).filter(s=>!s.bad).sort((a,b)=>a.d-b.d)[0];   /* 위험구역 안 수원은 제외 */
   const unusable=all.filter(r=>r.unusable).sort((a,b)=>a.d-b.d);
   const nearH=all.slice().sort((a,b)=>a.d-b.d)[0];
   return {T,g,info,lv,req,margin,rings,first,searchR,firstOK,second,hd,h15,station,alt,unusable,nearH,
@@ -643,7 +649,7 @@ const now=()=>{const d=new Date();return String(d.getHours()).padStart(2,"0")+":
 function opsText(o){
   const dir=dirName(dirDeg()), L1=[];
   L1.push(`[작전명령] ${now()} 화재 발생 — ${o.nearH?o.nearH.h.addr.replace(/ 인근$/,"")+" 부근":"발화지점"} (${fire.lat.toFixed(5)}, ${fire.lon.toFixed(5)})`);
-  L1.push(`· 강도 ${o.lv}(${o.g.Q} MW) · ${wx?`${dirName(wx.wd)}풍 ${wx.ws.toFixed(1)} m/s`:"바람 정보 없음"} · ${dir}쪽 확산${sim.dir!=null?"(수정)":""} · 경과 ${Math.round(o.T)}분`);
+  L1.push(`· 강도 ${o.lv}(${o.g.Q} MW) · ${wx?`${dirName(wx.wd)}풍 ${wx.ws.toFixed(1)} m/s`:"바람 정보 없음"} · ${dir}쪽 확산${sim.dir!=null?"(수정)":""} · 경과 ${fmtT(o.T)}`);
   L1.push(`· 요구: ${o.req.g}등급 이상, ${fmtQ(o.req.q)} L/min`);
   L1.push(`1. 1차 진압 출동${o.firstOK?"":" (요구 유량 미달)"}`);
   o.first.out.forEach((r,i)=>L1.push(`   제${i+1}진압대 → ${r.h.id} (${sideOf(r)} ${fmtKm(r.d)}, ${gname(r.p.g)} ${fmtQ(r.p.q)} L/min)`));
@@ -683,7 +689,7 @@ function opsBadges(){
 /* 작전 창 */
 function opsBodyHTML(o){
   const g=o.g, row=(k,v)=>`<div><b>${k}</b><span>${v}</span></div>`;
-  let s=`<div class="fsec"><h3>화재 시나리오 · ${now()} 기준 · 경과 ${Math.round(o.T)}분</h3><div class="kv ops">
+  let s=`<div class="fsec"><h3>화재 시나리오 · ${now()} 기준 · 경과 ${fmtT(o.T)}</h3><div class="kv ops">
     ${row("화재 강도",`${o.lv} · ${g.Q} MW`)}
     ${row("발화 위치",`${o.nearH?esc(o.nearH.h.addr.replace(/ 인근$/,"")):"-"}<small class="num"><br>${fire.lat.toFixed(5)}, ${fire.lon.toFixed(5)}</small>`)}
     ${row("바람",wx?`${dirName(wx.wd)}풍 ${wx.ws.toFixed(1)} m/s <small>(${windLvl(wx.ws)})</small>`:"정보 없음")}
@@ -804,7 +810,7 @@ resetFx();
 function frontAt(T,th){
   const g=simGeom(T); let f=1;
   const dn=(1+Math.cos(th))/2;                         /* 풍하측일수록 손가락 모양으로 더 불규칙 */
-  for(const h of shapeH) f+=h.amp*(0.6+1.4*dn*(g.calm?0:1))*Math.sin(h.k*th+h.ph+0.04*T);
+  for(const h of shapeH) f+=h.amp*(0.6+1.4*dn*(g.calm?0:1))*Math.sin(h.k*th+h.ph+0.6*Math.log(1+T));
   const x=g.c+g.a*Math.cos(th)*f, y=g.b*Math.sin(th)*f, sb=Math.sin(g.beta), cb=Math.cos(g.beta);
   return [x*sb+y*cb, x*cb-y*sb];                        /* 동, 북 (m) */
 }
@@ -831,7 +837,7 @@ function fireRender(dt,t){
   const [fx,fy]=ll2s(fire.lat,fire.lon); FO={x:fx,y:fy,m:mpp(fire.lat)};
   const dwx=Math.sin(g.beta), dwy=-Math.cos(g.beta);     /* 화면상 풍하 방향 */
   const N=96, front=frontPts(T,N).map(p=>l2s(p[0],p[1]));
-  const burnDur=4+lvl*0.4, Tb=Math.max(0,T-burnDur);
+  const burnDur=Math.max(4+lvl*0.4,T*0.15), Tb=Math.max(0,T-burnDur);   /* 불타는 띠의 폭: 장시간에서도 보이도록 경과 시간에 비례 */
   const inner=Tb>0?frontPts(Tb,N).map(p=>l2s(p[0],p[1])):null;
   const poly=(pts)=>{fctx.beginPath();pts.forEach((p,i)=>i?fctx.lineTo(p[0],p[1]):fctx.moveTo(p[0],p[1]));fctx.closePath()};
   const flick=0.85+0.15*Math.sin(t*9)+0.08*Math.sin(t*23);
@@ -858,7 +864,7 @@ function fireRender(dt,t){
     spotClock+=dt;
     const rate=0.08*lvl*Math.min(U,12)/5;               /* 초당 발생 기대값 */
     if(spots.length<10&&Math.random()<rate*dt){
-      const head=g.c+g.a, d=head+12+Math.random()*(25+U*9+lvl*4), lat=(Math.random()*2-1)*g.b*0.7;
+      const head=g.c+g.a, d=head+12+Math.random()*(25+U*9+lvl*4+g.a*0.12), lat=(Math.random()*2-1)*g.b*0.7;
       const sb=Math.sin(g.beta),cb=Math.cos(g.beta);
       spots.push({e:d*sb+lat*cb,n:d*cb-lat*sb,t0:T});
     }
@@ -871,10 +877,10 @@ function fireRender(dt,t){
   }
 
   /* 4) 화염 입자 — 전선을 따라 솟구치며 바람에 눕는 불꽃 */
-  for(let i=0;i<N;i+=3){const p=front[i],dn=g.calm?1:(1+Math.cos(i/N*2*Math.PI))/2,r=(10+lvl*2.2)*(0.7+0.6*dn)*(0.85+0.3*Math.sin(t*6+i));
+  for(let i=0;i<N;i+=3){const p=front[i],dn=g.calm?1:(1+Math.cos(i/N*2*Math.PI))/2,r=Math.max(14,Math.min(16+lvl*4,g.b/FO.m*0.8))*0.55*(0.7+0.6*dn)*(0.85+0.3*Math.sin(t*6+i));
     fctx.globalAlpha=0.55;fctx.drawImage(GLOW,p[0]-r,p[1]-r,r*2,r*2)}
   fctx.globalAlpha=1;
-  const scale=Math.max(16+lvl*4,(4+Math.sqrt(Q)*1.6)/FO.m);   /* 화면에서 보이도록 최소 크기 보장 */
+  const scale=Math.max(14,Math.min(16+lvl*4,g.b/FO.m*0.8),(4+Math.sqrt(Q)*1.6)/FO.m);   /* 화면에서 보이되, 축소 화면에서는 화재 영역보다 커지지 않게 */
   const want=Math.round(Math.min(300,50+lvl*25));
   let perim=0; for(let i=0;i<N;i++){const a=front[i],b=front[(i+1)%N];perim+=Math.hypot(a[0]-b[0],a[1]-b[1])}
   const spawnN=Math.min(want-flames.length,Math.ceil(want*dt*1.6));
@@ -944,7 +950,8 @@ function fxLoop(ts){
   if(!onMap)return;
   const t=ts/1000;
   /* 시뮬레이션 시간 진행 */
-  if(sim.play&&fire){sim.t=Math.min(SIM_TMAX,sim.t+dt*SIM_RATE);if(sim.t>=SIM_TMAX)sim.play=false;draw();updSimUI()}
+  if(sim.play&&fire){sim.t=Math.min(SIM_TMAX,sim.t+dt*simRate(sim.t));if(sim.t>=SIM_TMAX)sim.play=false;
+    if(sim.t>sim.fitT*0.85&&sim.fitT<SIM_TMAX)fitFire();draw();updSimUI()}
   /* 화염 */
   fireRender(dt,t);
   /* 바람 흐름 */
@@ -1014,12 +1021,12 @@ function updateFirebar(){
   const fb=$("#firebar"), alert=!!fire&&!fireMode&&!moveId&&!dirPick;
   fb.classList.toggle("on",fireMode||!!fire||!!moveId||dirPick); fb.classList.toggle("alert",alert);
   $("#firetxt").innerHTML=dirPick?"화재가 번질 쪽을 지도에서 누르세요":moveId?"새 위치를 지도에서 눌러 주세요":fireMode&&!fire?"지도를 눌러 화재 지점을 지정하세요":fireMode?"다른 곳을 누르면 지점이 바뀝니다":
-    `<b>화재 발생</b> ${presetOf(sim.lv)} ${simQ()} MW · ${dirName(dirDeg())}쪽 확산 <u>작전명령 보기 ›</u>`;
+    `<b>화재</b> ${presetOf(sim.lv)} ${simQ()} MW · ${dirName(dirDeg())}쪽 <u>작전명령 ›</u>`;
 }
 $("#firebar").addEventListener("click",e=>{if(e.target.closest("#fireoff"))return;if(fire&&!fireMode&&!moveId&&!dirPick)openOps()});
 $("#fireoff").onclick=()=>{sim.t=0;sim.play=false;sim.dir=null;dirPick=false;spots=[];resetFx();fire=null;fireMode=false;moveId=null;updateFirebar();buildChips();closeSheet();draw()};
 function setFire(lat,lon){fire={lat,lon};fireMode=false;sim.dir=null;buildChips();simCompact=true;resetFx();sim.t=0;updateFirebar();showFire();startSim();fetchWx(false)}
-function startSim(){sim.t=0;spots=[];resetFx();sim.play=true;fitFire()}
+function startSim(){sim.t=0;sim.fitT=60;spots=[];resetFx();sim.play=true;fitFire()}
 
 /* ───────── 시트 ───────── */
 function closeSheet(){selId=null;$("#sheet").hidden=true;draw()}
